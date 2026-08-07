@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="かんたんな質問に答えて、あなたのホームページの見本を作ります。">
+  <title>無料ホームページを作る｜RYOSEIWORLD</title>
+  <link rel="canonical" href="https://imai-design.github.io/free-hp-site/create.html">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="無料ホームページ製作所｜RYOSEIWORLD">
+  <meta property="og:title" content="無料ホームページを作る｜RYOSEIWORLD">
+  <meta property="og:description" content="かんたんな質問に答えて、あなたのホームページの見本を作ります。">
+  <meta property="og:url" content="https://imai-design.github.io/free-hp-site/create.html">
+  <meta property="og:image" content="https://imai-design.github.io/free-hp-site/assets/ogp.png">
+  <meta property="og:locale" content="ja_JP">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="無料ホームページを作る｜RYOSEIWORLD">
+  <meta name="twitter:description" content="かんたんな質問に答えて、あなたのホームページの見本を作ります。">
+  <meta name="twitter:image" content="https://imai-design.github.io/free-hp-site/assets/ogp.png">
+  <meta name="theme-color" content="#FBFAF6">
+  <link rel="icon" href="favicon.ico" type="image/x-icon">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&amp;family=Zen+Kaku+Gothic+New:wght@400;500;700;900&amp;display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body class="create-page">
+  <header class="site-header page-wrap">
+    <a class="brand" href="index.html" aria-label="RYOSEIWORLD 無料ホームページ製作所 ホーム">
+      <span class="brand-mark">RYOSEIWORLD</span>
+      <span class="brand-name">無料ホームページ製作所</span>
+    </a>
+    <a class="back-link" href="index.html"><span aria-hidden="true">←</span> もどる</a>
+  </header>
+
+  <main class="create-main page-wrap">
+    <div class="create-intro">
+      <p class="eyebrow">MAKE YOUR OWN SIGNBOARD</p>
+      <h1><span class="u-line">いくつか答えると、</span><br class="brk-md"><br class="brk-sm"><span class="u-line marker-text">ホームページが</span><br class="brk-sm"><span class="u-line marker-text">見えてきます。</span></h1>
+      <p>あなたのお店のことを、少しだけ教えてください。見本にすぐ反映されます。</p>
+    </div>
+
+    <div class="create-layout">
+      <form class="question-form" id="site-form">
+        <fieldset class="question-group">
+          <legend><span class="question-number">01</span>お店・活動の名前</legend>
+          <label class="sr-only" for="shop-name">お店・活動の名前</label>
+          <input id="shop-name" name="shopName" type="text" placeholder="例：喫茶かえる" autocomplete="organization" required maxlength="40">
+        </fieldset>
+
+        <fieldset class="question-group">
+          <legend><span class="question-number">02</span>どんなお店・活動ですか？</legend>
+          <div class="choice-row">
+            <label class="choice"><input type="radio" name="businessType" value="飲食店" checked required><span>飲食店</span></label>
+            <label class="choice"><input type="radio" name="businessType" value="美容・サロン"><span>美容・サロン</span></label>
+            <label class="choice"><input type="radio" name="businessType" value="その他"><span>その他</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="question-group">
+          <legend><span class="question-number">03</span>ひとことキャッチコピー</legend>
+          <label class="sr-only" for="catchcopy">ひとことキャッチコピー</label>
+          <input id="catchcopy" name="catchcopy" type="text" placeholder="三代つづく、町の定食屋" required maxlength="60">
+        </fieldset>
+
+        <fieldset class="question-group">
+          <legend><span class="question-number">04</span>紹介文</legend>
+          <label class="sr-only" for="description">紹介文</label>
+          <textarea id="description" name="description" rows="3" placeholder="お店のこと、活動のことを自由に書いてください" required maxlength="400"></textarea>
+        </fieldset>
+
+        <fieldset class="question-group">
+          <legend><span class="question-number">05</span>色の雰囲気</legend>
+          <div class="choice-row">
+            <label class="choice"><input type="radio" name="mood" value="あたたかい" checked required><span>あたたかい</span></label>
+            <label class="choice"><input type="radio" name="mood" value="落ち着いた"><span>落ち着いた</span></label>
+            <label class="choice"><input type="radio" name="mood" value="さわやか"><span>さわやか</span></label>
+          </div>
+        </fieldset>
+
+        <fieldset class="question-group question-optional">
+          <legend><span class="question-number">06</span>電話番号 <small>任意</small></legend>
+          <label class="sr-only" for="phone">電話番号</label>
+          <input id="phone" name="phone" type="tel" placeholder="例：03-1234-5678" autocomplete="tel" maxlength="40">
+        </fieldset>
+
+        <fieldset class="question-group question-optional">
+          <legend><span class="question-number">07</span>住所・営業時間 <small>任意</small></legend>
+          <label class="sr-only" for="address">住所・営業時間</label>
+          <input id="address" name="address" type="text" placeholder="例：東京都渋谷区 / 11:00〜18:00" maxlength="200">
+        </fieldset>
+
+        <fieldset class="question-group question-optional">
+          <legend><span class="question-number">08</span>「作りました」表示 <small>任意</small></legend>
+          <div class="choice-row">
+            <label class="choice"><input type="radio" name="badgeChoice" value="つけたまま（無料）" checked><span>つけたまま（無料）</span></label>
+            <label class="choice"><input type="radio" name="badgeChoice" value="外す（500円）"><span>外す（500円）</span></label>
+          </div>
+        </fieldset>
+      </form>
+
+      <section class="preview-column" aria-labelledby="preview-title">
+        <div class="preview-heading">
+          <p class="eyebrow">LIVE PREVIEW</p>
+          <h2 id="preview-title">いまの見本</h2>
+        </div>
+        <div class="mini-browser preview-browser">
+          <div class="browser-topbar">
+            <span class="window-dot"></span><span class="window-dot"></span><span class="window-dot"></span>
+            <span class="browser-address">your-shop.example</span>
+          </div>
+          <div class="sample-site" id="sample-site">
+            <header class="sample-header">
+              <span class="sample-shop-name" data-preview="shopName">あなたのお店</span>
+              <span class="sample-menu" aria-hidden="true"><i></i><i></i><i></i></span>
+            </header>
+            <div class="sample-hero">
+              <div class="sample-hero-copy">
+                <span class="sample-kicker" data-preview="businessType">飲食店</span>
+                <h3 data-preview="catchcopy">ここに、あなたの物語を。</h3>
+              </div>
+              <div class="sample-photo" aria-label="写真が入る場所"></div>
+            </div>
+            <p class="sample-description" data-preview="description">あなたのお店の紹介文がここに入ります。</p>
+            <div class="sample-type-block" data-type-block="restaurant">
+              <span class="sample-block-label">おすすめ</span>
+              <strong>本日の定食</strong>
+              <span>季節の食材を使った、いつもの味。</span>
+            </div>
+            <div class="sample-type-block" data-type-block="beauty" hidden>
+              <span class="sample-block-label">ご予約</span>
+              <strong>ゆっくり、きれいに。</strong>
+              <button type="button" class="sample-button">予約する</button>
+            </div>
+            <div class="sample-type-block" data-type-block="other" hidden>
+              <span class="sample-block-label">お知らせ</span>
+              <strong>活動予定を更新しました。</strong>
+              <span>次の予定はこちらからご覧ください。</span>
+            </div>
+            <footer class="sample-footer">
+              <span data-preview="phone">電話番号はここに表示されます</span>
+              <span data-preview="address">住所・営業時間はここに表示されます</span>
+            </footer>
+            <div class="made-with-badge">
+              <a href="https://imai-design.github.io/free-hp-site/" target="_blank" rel="noopener">無料でホームページくんで作りました。</a>
+            </div>
+          </div>
+        </div>
+        <button class="button button-large apply-button" id="apply-button" type="submit" form="site-form">このホームページを、無料でもらう <span aria-hidden="true">→</span></button>
+        <p class="privacy-note">お預かりした内容は、ホームページを作るためだけに使います。</p>
+        <a class="manual-contact-link" id="manual-contact-link" href="mailto:kaeru3160@gmail.com">自動生成がうまくいかないときは、メールで相談する</a>
+
+        <section class="generation-result" id="generation-result" hidden aria-labelledby="generation-status">
+          <p class="eyebrow">YOUR WEBSITE</p>
+          <h2 id="generation-status" role="status" aria-live="polite">ホームページを生成しています…</h2>
+
+          <div class="generation-panel generation-loading" id="generation-loading" hidden>
+            <span class="loading-mark" aria-hidden="true"></span>
+            <p>入力内容をもとに、ホームページを組み立てています。少しお待ちください。</p>
+          </div>
+
+          <div class="generation-panel generation-success" id="generation-success" hidden>
+            <p>このURLから、できあがったホームページを見られます。</p>
+            <div class="generated-link-row">
+              <a id="generated-link" class="generated-link" href="#" target="_blank" rel="noopener noreferrer"></a>
+              <button class="button button-secondary button-small" id="copy-generated-link" type="button">このリンクをコピー</button>
+            </div>
+            <p class="copy-status" id="generated-copy-status" role="status" aria-live="polite"></p>
+            <div class="generated-preview-wrap">
+              <p class="generated-preview-label">GENERATED PREVIEW</p>
+              <iframe id="generated-preview" title="生成されたホームページのプレビュー" loading="lazy" hidden></iframe>
+            </div>
+          </div>
+
+          <div class="generation-panel generation-error" id="generation-error" hidden role="alert">
+            <p id="generation-error-message"></p>
+            <a class="button button-secondary" href="mailto:kaeru3160@gmail.com" id="generation-error-contact">メールで相談する <span aria-hidden="true">→</span></a>
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>
