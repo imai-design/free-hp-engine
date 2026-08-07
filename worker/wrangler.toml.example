@@ -2,22 +2,26 @@ name = "free-hp-engine"
 main = "src/index.ts"
 compatibility_date = "2026-07-22"
 
-# Same telewor.com account as the existing *.ryoseiworld.workers.dev Workers.
-# The authenticated whoami command could not complete because Cloudflare DNS was unavailable.
-account_id = "b99a46227dbadca74dcfb800fe7c8301"
+# Your Cloudflare account ID (found in the Cloudflare dashboard sidebar).
+account_id = "YOUR_CLOUDFLARE_ACCOUNT_ID"
 
 [ai]
 binding = "AI"
 
 [[kv_namespaces]]
 binding = "SITES"
-id = "7a182bd4d54d42f1a52eac274b2d4ce1"
+# Create with: npx wrangler kv namespace create SITES
+id = "YOUR_KV_NAMESPACE_ID"
 
 [vars]
-PUBLIC_BASE_URL = "https://free-hp-engine.ryoseiworld.workers.dev"
+PUBLIC_BASE_URL = "https://your-worker-subdomain.workers.dev"
 # Googleログインのクライアント ID（公開値。これを設定した瞬間に登録制が有効になる）
-GOOGLE_CLIENT_ID = "74818076903-rb8kqjbesn59lsn4irdd0ijgpjmum5nh.apps.googleusercontent.com"
+GOOGLE_CLIENT_ID = "YOUR_GOOGLE_OAUTH_CLIENT_ID"
 
 # Before the first deployment, set the secret without putting it in source control:
 # npx wrangler secret put ANTHROPIC_API_KEY
 # ANTHROPIC_API_KEY未設定時はCloudflare Workers AI（上の[ai] binding、無料・キー不要）に自動フォールバックする。
+
+# Copy this file to wrangler.toml and fill in the placeholders above.
+# wrangler.toml is gitignored so your real account_id / KV namespace id
+# never get committed.
