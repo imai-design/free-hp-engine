@@ -1,4 +1,11 @@
-export const INDUSTRIES = ["飲食店", "美容・サロン", "その他"] as const;
+export const INDUSTRIES = [
+  "飲食店",
+  "美容・サロン",
+  "教室・スクール",
+  "小売・物販",
+  "修理・住まいのサービス",
+  "その他",
+] as const;
 export const COLOR_THEMES = ["あたたかい", "落ち着いた", "さわやか"] as const;
 
 export type Industry = (typeof INDUSTRIES)[number];

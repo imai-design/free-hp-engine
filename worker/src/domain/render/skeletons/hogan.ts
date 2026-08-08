@@ -145,7 +145,7 @@ function body(ctx: SkeletonContext): string {
 
 export const HOGAN: Skeleton = {
   key: "方眼",
-  industries: ["飲食店", "その他"],
+  industries: ["飲食店", "教室・スクール", "小売・物販", "修理・住まいのサービス", "その他"],
   palettes: PALETTES,
   headings: HEADINGS,
   contactLabels: CONTACT_LABELS,

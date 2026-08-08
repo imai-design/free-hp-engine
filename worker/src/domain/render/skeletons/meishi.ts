@@ -167,7 +167,7 @@ function body(ctx: SkeletonContext): string {
 
 export const MEISHI: Skeleton = {
   key: "名刺",
-  industries: ["飲食店", "美容・サロン", "その他"],
+  industries: ["飲食店", "美容・サロン", "教室・スクール", "小売・物販", "修理・住まいのサービス", "その他"],
   palettes: PALETTES,
   headings: HEADINGS,
   contactLabels: CONTACT_LABELS,

@@ -68,6 +68,9 @@ export const isOwnerVoice = (catchphrase: string, area: Area | null): boolean =>
 const INDUSTRY_WORDS: Record<Industry, string | null> = {
   飲食店: "飲食店",
   "美容・サロン": "サロン", // 「・」は木札・縦組み・小さい札で割れて壊れて見える
+  "教室・スクール": "教室・スクール",
+  "小売・物販": "小売・物販",
+  "修理・住まいのサービス": "修理・住まいのサービス",
   その他: null, // 店が自分のページで「その他」と名乗ることになるので出さない
 };
 

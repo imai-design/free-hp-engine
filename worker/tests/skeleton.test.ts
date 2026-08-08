@@ -6,7 +6,7 @@ import { buildSkeletonContext } from "../src/domain/render/parts.ts";
 import { selectPalette, selectSkeleton } from "../src/domain/render/select.ts";
 import { SKELETONS } from "../src/domain/render/skeletons/index.ts";
 import type { SkeletonKey } from "../src/domain/render/types.ts";
-import type { Industry, SiteInput } from "../src/domain/validate.ts";
+import { INDUSTRIES, type Industry, type SiteInput } from "../src/domain/validate.ts";
 
 function baseInput(overrides: Partial<SiteInput> = {}): SiteInput {
   return {
@@ -62,6 +62,9 @@ test("店名が同じでも住所が違えば、別の顔になり得る（チ�
 const EXPECTED_SKELETONS_BY_INDUSTRY: Record<Industry, readonly SkeletonKey[]> = {
   飲食店: ["暖簾", "名刺", "方眼"],
   "美容・サロン": ["名刺", "短冊"],
+  "教室・スクール": ["名刺", "短冊", "方眼"],
+  "小売・物販": ["名刺", "短冊", "方眼"],
+  "修理・住まいのサービス": ["名刺", "短冊", "方眼"],
   その他: ["名刺", "短冊", "方眼"],
 };
 
@@ -85,12 +88,13 @@ test("業種に合わない骨格が当たらない（暖簾は飲食店以外�
   }
 });
 
-test("暖簾は美容・サロンとその他には絶対に割り当てない（審査指摘の直接確認）", () => {
+test("暖簾は飲食店以外には絶対に割り当てない（審査指摘の直接確認）", () => {
   for (let i = 0; i < 100; i += 1) {
-    const beauty = selectSkeleton(baseInput({ industry: "美容・サロン", storeName: `サロン${i}` }));
-    const other = selectSkeleton(baseInput({ industry: "その他", storeName: `お店${i}` }));
-    assert.notEqual(beauty.key, "暖簾");
-    assert.notEqual(other.key, "暖簾");
+    for (const industry of INDUSTRIES) {
+      if (industry === "飲食店") continue;
+      const skeleton = selectSkeleton(baseInput({ industry, storeName: `${industry}${i}` }));
+      assert.notEqual(skeleton.key, "暖簾", `${industry} に暖簾が割り当てられた`);
+    }
   }
 });
 

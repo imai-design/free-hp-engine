@@ -24,7 +24,7 @@ export interface HeadlineParts {
   readonly store: string;
   /** 市区町村だけ。取れなければ undefined */
   readonly area?: string;
-  /** ジャンル語（カフェ）→無ければ業種語（飲食店/サロン）。「その他」で機械文でなければ undefined */
+  /** ジャンル語（カフェ）→無ければ業種表示語。「その他」で機械文でなければ undefined */
   readonly word?: string;
 }
 
@@ -81,7 +81,7 @@ export interface SkeletonContext {
   readonly dyedMaxRem: number; // 上の文字数から決めた最大フォントサイズ
   readonly initial: string | null; // 印・空押しに使う頭1文字（絵文字等ならnull）
   readonly areaFull: string; // 東京都武蔵野市。無ければ ""
-  readonly word: string; // カフェ / 飲食店 / サロン。無ければ ""
+  readonly word: string; // カフェ / 飲食店 / サロン / 教室・スクール等。無ければ ""
   readonly contactRows: readonly ContactRow[];
   /** 予約・Instagram・LINE公式。1つも無ければ空配列（骨格側は空なら列ごと出さない）。 */
   readonly actions: readonly ActionLink[];

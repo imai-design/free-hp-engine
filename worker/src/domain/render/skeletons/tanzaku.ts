@@ -146,7 +146,7 @@ function body(ctx: SkeletonContext): string {
 
 export const TANZAKU: Skeleton = {
   key: "短冊",
-  industries: ["美容・サロン", "その他"],
+  industries: ["美容・サロン", "教室・スクール", "小売・物販", "修理・住まいのサービス", "その他"],
   palettes: PALETTES,
   headings: HEADINGS,
   contactLabels: CONTACT_LABELS,
