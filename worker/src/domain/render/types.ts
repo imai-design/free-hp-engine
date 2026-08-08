@@ -1,6 +1,6 @@
 import type { Industry } from "../validate.ts";
 
-export type SkeletonKey = "名刺" | "暖簾" | "短冊" | "方眼";
+export type SkeletonKey = "名刺" | "暖簾" | "短冊" | "方眼" | "看板";
 export type Temperature = "warm" | "calm" | "fresh";
 
 export interface Palette {

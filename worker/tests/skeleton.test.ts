@@ -6,7 +6,7 @@ import { buildSkeletonContext } from "../src/domain/render/parts.ts";
 import { selectPalette, selectSkeleton } from "../src/domain/render/select.ts";
 import { SKELETONS } from "../src/domain/render/skeletons/index.ts";
 import type { SkeletonKey } from "../src/domain/render/types.ts";
-import { INDUSTRIES, type Industry, type SiteInput } from "../src/domain/validate.ts";
+import { INDUSTRIES, type ColorTheme, type Industry, type SiteInput } from "../src/domain/validate.ts";
 
 function baseInput(overrides: Partial<SiteInput> = {}): SiteInput {
   return {
@@ -60,12 +60,12 @@ test("店名が同じでも住所が違えば、別の顔になり得る（チ�
 // ---- ② 業種に合わない骨格が当たらない（DESIGN_SPEC.md §0） ----
 
 const EXPECTED_SKELETONS_BY_INDUSTRY: Record<Industry, readonly SkeletonKey[]> = {
-  飲食店: ["暖簾", "名刺", "方眼"],
+  飲食店: ["暖簾", "名刺", "方眼", "看板"],
   "美容・サロン": ["名刺", "短冊"],
   "教室・スクール": ["名刺", "短冊", "方眼"],
-  "小売・物販": ["名刺", "短冊", "方眼"],
+  "小売・物販": ["名刺", "短冊", "方眼", "看板"],
   "修理・住まいのサービス": ["名刺", "短冊", "方眼"],
-  その他: ["名刺", "短冊", "方眼"],
+  その他: ["名刺", "短冊", "方眼", "看板"],
 };
 
 test("業種に合わない骨格が当たらない（暖簾は飲食店以外に出ない・短冊は飲食店に出ない）", () => {
@@ -98,16 +98,17 @@ test("暖簾は飲食店以外には絶対に割り当てない（審査指摘�
   }
 });
 
-// ---- ③ 4骨格それぞれがレンダリングできて、WCAG用のCSS変数を持つ ----
+// ---- ③ 5骨格それぞれがレンダリングできて、WCAG用のCSS変数を持つ ----
 
 const SKELETON_CASES: readonly { skeleton: SkeletonKey; industry: Industry }[] = [
   { skeleton: "名刺", industry: "その他" },
   { skeleton: "暖簾", industry: "飲食店" },
   { skeleton: "短冊", industry: "美容・サロン" },
   { skeleton: "方眼", industry: "飲食店" },
+  { skeleton: "看板", industry: "小売・物販" },
 ];
 
-test("4骨格それぞれがレンダリングでき、--photo-aspect / --photo-max / --dye-max を必ず持つ", () => {
+test("5骨格それぞれがレンダリングでき、--photo-aspect / --photo-max / --dye-max を必ず持つ", () => {
   for (const { skeleton, industry } of SKELETON_CASES) {
     const input = baseInput({ industry });
     const html = renderSite(input, baseContent, { skeleton });
@@ -120,7 +121,7 @@ test("4骨格それぞれがレンダリングでき、--photo-aspect / --photo-
   }
 });
 
-test("4骨格とも、写真あり/なし・住所なし・店名40文字・店名がラテン・highlights0件・見本(sample:true)で例外を投げない", () => {
+test("5骨格とも、写真あり/なし・住所なし・店名40文字・店名がラテン・highlights0件・見本(sample:true)で例外を投げない", () => {
   const png24byte = (width: number, height: number): string => {
     const bytes = [
       0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
@@ -154,7 +155,87 @@ test("4骨格とも、写真あり/なし・住所なし・店名40文字・店�
   }
 });
 
-// ---- ④ 見出しにクリシェ（心温まる/心地よいひととき 等）が出ない ----
+// ---- ④ 看板固有: 必須情報・機能・対応業種・3テーマ・写真3形状 ----
+
+test("看板は店名・キャッチ・連絡先・メニュー・行動ボタン・フッターをすべて表示し、同じ入力から同じHTMLを返す", () => {
+  const input = baseInput({
+    storeName: "炭火食堂 まっすぐ",
+    industry: "飲食店",
+    catchphrase: "腹いっぱい、うまいものを。",
+    menuText: "炭火焼き定食｜980円\n瓶ビール ¥600",
+    reserveUrl: "https://example.com/reserve",
+    instagram: "sumibi_massugu",
+    lineOfficial: "@massugu",
+  });
+  const first = renderSite(input, baseContent, { skeleton: "看板" });
+  const second = renderSite({ ...input }, { ...baseContent }, { skeleton: "看板" });
+
+  assert.equal(first, second, "看板が同じ入力から異なるHTMLを返した");
+  assert.ok(first.includes("炭火食堂 まっすぐ"), "店名が出ていない");
+  assert.ok(first.includes("腹いっぱい、うまいものを。"), "キャッチコピーが出ていない");
+  assert.match(first, /href="tel:0312345678">03-1234-5678<\/a>/u, "電話のtel:リンクが出ていない");
+  assert.match(first, /href="https:\/\/www\.google\.com\/maps\/search\/\?api=1&amp;query=/u, "住所リンクが出ていない");
+  assert.ok(first.includes("8:00〜18:00（月曜定休）"), "営業時間が出ていない");
+  assert.ok(first.includes("炭火焼き定食"), "メニュー名が出ていない");
+  assert.ok(first.includes("980円"), "メニュー価格が出ていない");
+  assert.ok(first.includes("瓶ビール"), "2件目のメニュー名が出ていない");
+  assert.ok(first.includes("予約する"), "予約ボタンが出ていない");
+  assert.ok(first.includes("Instagram"), "Instagramボタンが出ていない");
+  assert.ok(first.includes("LINE公式"), "LINE公式ボタンが出ていない");
+  assert.ok(first.includes("期限はありません"), "通常ページ用フッターが出ていない");
+
+  const sample = renderSite(input, baseContent, { skeleton: "看板", sample: true });
+  assert.ok(sample.includes("紹介文はこちらで仮に書いた"), "見本用の注記が出ていない");
+  assert.ok(sample.includes("90日"), "見本用フッターが出ていない");
+});
+
+test("看板の対応業種は飲食店・小売/物販・その他だけ", () => {
+  const kanban = SKELETONS.find((skeleton) => skeleton.key === "看板");
+  assert.ok(kanban, "看板骨格が登録されていない");
+  assert.deepEqual(kanban.industries, ["飲食店", "小売・物販", "その他"]);
+});
+
+test("看板は、あたたかい・落ち着いた・さわやかの3テーマすべてでレンダリングできる", () => {
+  const cases: readonly { theme: ColorTheme; palette: string }[] = [
+    { theme: "あたたかい", palette: "赤提灯" },
+    { theme: "落ち着いた", palette: "夜藍" },
+    { theme: "さわやか", palette: "深緑" },
+  ];
+  for (const { theme, palette } of cases) {
+    const html = renderSite(baseInput({ colorTheme: theme }), baseContent, { skeleton: "看板" });
+    assert.ok(html.includes('data-型="看板"'), `${theme}: 看板としてレンダリングされていない`);
+    assert.ok(html.includes(`data-配色="${palette}"`), `${theme}: 対応する配色が選ばれていない`);
+    assert.match(html, /--night:\s*#[0-9A-F]{6};/u, `${theme}: 看板の色変数が出ていない`);
+  }
+});
+
+test("看板は横長16:10・正方形1:1・縦3:4の写真枠を使い分け、写真なしでも成立する", () => {
+  const png24byte = (width: number, height: number): string => {
+    const bytes = [
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
+      (width >>> 24) & 0xff, (width >>> 16) & 0xff, (width >>> 8) & 0xff, width & 0xff,
+      (height >>> 24) & 0xff, (height >>> 16) & 0xff, (height >>> 8) & 0xff, height & 0xff,
+    ];
+    return `data:image/png;base64,${btoa(String.fromCharCode(...bytes))}`;
+  };
+  const cases = [
+    { photo: png24byte(160, 100), aspect: "16 / 10", max: "100%" },
+    { photo: png24byte(100, 100), aspect: "1 / 1", max: "620px" },
+    { photo: png24byte(90, 120), aspect: "3 / 4", max: "520px" },
+  ] as const;
+  for (const item of cases) {
+    const html = renderSite(baseInput({ photo: item.photo }), baseContent, { skeleton: "看板" });
+    assert.ok(html.includes(`--photo-aspect: ${item.aspect};`), `${item.aspect}: 写真比率が一致しない`);
+    assert.ok(html.includes(`--photo-max: ${item.max};`), `${item.aspect}: 写真の最大幅が一致しない`);
+    assert.match(html, /<figure class="photo"><img/u, `${item.aspect}: 写真要素が出ていない`);
+  }
+  const withoutPhoto = renderSite(baseInput({ photo: undefined }), baseContent, { skeleton: "看板" });
+  assert.doesNotMatch(withoutPhoto, /<figure class="photo">/u);
+});
+
+// ---- ⑤ 見出しにクリシェ（心温まる/心地よいひととき 等）が出ない ----
 
 test("見出し(h1相当)は事実だけから組み立てられ、AIが生成する4項目に依存しない", () => {
   const otherContent: GeneratedContent = {
@@ -237,5 +318,29 @@ test("WCAG AA 4.5:1: 方眼の見出し色(pen)は本文紙面(paper/band)の上
     assert.ok(contrastRatio(sub, paper) >= AA_MIN_CONTRAST, `${palette.key}: sub/paper ${contrastRatio(sub, paper)}`);
     assert.ok(contrastRatio(pen, paper) >= AA_MIN_CONTRAST, `${palette.key}: pen/paper ${contrastRatio(pen, paper)}`);
     assert.ok(contrastRatio(pen, band) >= AA_MIN_CONTRAST, `${palette.key}: pen/band ${contrastRatio(pen, band)}`);
+  }
+});
+
+test("WCAG AA 4.5:1: 看板の3配色は、実際に文字が乗る全8色ペアで基準を満たす", () => {
+  const kanban = SKELETONS.find((skeleton) => skeleton.key === "看板");
+  assert.ok(kanban, "看板骨格が見つからない");
+  assert.equal(kanban.palettes.length, 3, "看板は3配色のはず");
+  assert.deepEqual(new Set(kanban.palettes.map((palette) => palette.temp)), new Set(["warm", "calm", "fresh"]));
+
+  const pairs = [
+    ["ink", "night"],
+    ["ink", "surface"],
+    ["muted", "night"],
+    ["muted", "surface"],
+    ["sign-ink", "sign"],
+    ["accent", "night"],
+    ["accent", "surface"],
+    ["accent-ink", "accent"],
+  ] as const;
+  for (const palette of kanban.palettes) {
+    for (const [foreground, background] of pairs) {
+      const ratio = contrastRatio(palette.vars[foreground], palette.vars[background]);
+      assert.ok(ratio >= AA_MIN_CONTRAST, `${palette.key}: ${foreground}/${background} ${ratio.toFixed(2)}:1`);
+    }
   }
 });
