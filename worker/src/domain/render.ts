@@ -84,7 +84,7 @@ export function renderSite(input: SiteInput, content: GeneratedContent, options:
   <link rel="icon" href="${faviconDataUri(ctx.initial, palette.mark)}">
   <title>${ctx.storeName}｜ホームページ</title>
   <style>
-    :root { ${rootVars} --photo-aspect: ${frame.aspect}; --photo-max: ${frame.maxWidth}; --dye-max: ${ctx.dyedMaxRem}rem; }
+    :root { ${rootVars} --photo-aspect: ${frame.aspect}; --photo-max: ${frame.maxWidth}; --dye-max: ${ctx.dyedMaxRem}rem; --name-max: ${ctx.nameMaxRem}rem; }
     ${skeleton.css}
   </style>
 </head>

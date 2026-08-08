@@ -79,6 +79,7 @@ export interface SkeletonContext {
   readonly storeName: string;
   readonly dyedText: string | null; // 暖簾の染め抜き・短冊の縦組みに使う文字
   readonly dyedMaxRem: number; // 上の文字数から決めた最大フォントサイズ
+  readonly nameMaxRem: number; // 看板が店名をまるごと（切り詰めず）表示するときの最大フォントサイズ（Issue #4）
   readonly initial: string | null; // 印・空押しに使う頭1文字（絵文字等ならnull）
   readonly areaFull: string; // 東京都武蔵野市。無ければ ""
   readonly word: string; // カフェ / 飲食店 / サロン / 教室・スクール等。無ければ ""

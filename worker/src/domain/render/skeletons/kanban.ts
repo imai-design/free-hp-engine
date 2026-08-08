@@ -142,14 +142,17 @@ body{margin:0;background:var(--night);color:var(--ink);font-family:var(--gothic)
   letter-spacing:.16em;text-align:center}
 .kanban__divider{color:var(--sign-ink)}
 /*
- * 店名の長さでフォントサイズを頭打ちにする。--dye-max は他骨格（短冊の縦組み・暖簾の染め抜き）と
- * 共通の文字数連動サイズ（parts.ts dyedTextOf）で、render.ts が全骨格の:rootに必ず注入している。
- * 最小値1.6remはdyedMaxRemの取りうる下限（絵文字・記号始まりのDEFAULT_DYE_MAX_REM）に合わせ、
+ * 店名の長さでフォントサイズを頭打ちにする。--name-max は看板専用の文字数連動サイズ
+ * （parts.ts nameMaxRemOf）で、render.ts が全骨格の:rootに必ず注入している。
+ * 他骨格（短冊の縦組み・暖簾の染め抜き）が使う --dye-max（parts.ts dyedTextOf）は
+ * 「5文字を超えたら頭文字1文字に切り詰める」設計のため、店名をまるごと表示する看板に
+ * 流用すると6文字以上の屋号が一律「1文字」扱いになり非単調（Issue #4）になっていた。
+ * 最小値1.6remはnameMaxRemの取りうる下限（DEFAULT_DYE_MAX_REM）に合わせ、
  * clampのmin>maxで頭打ちが無効化されないようにしてある。
  * word-break:keep-allで「炭火食堂 まっすぐ」のような分かち書きの店名を単語の途中で折り返さず、
  * スペースでだけ改行する（それでも収まらない場合だけoverflow-wrap:break-wordが強制的に折る）。
  */
-.kanban__name{margin:0;color:var(--sign-ink);font-size:clamp(1.6rem,13vw,var(--dye-max));font-weight:900;
+.kanban__name{margin:0;color:var(--sign-ink);font-size:clamp(1.6rem,13vw,var(--name-max));font-weight:900;
   line-height:.98;letter-spacing:-.055em;text-align:center;word-break:keep-all;overflow-wrap:break-word;
   text-shadow:0 4px 0 rgb(0 0 0/.22),0 8px 18px rgb(0 0 0/.24)}
 .tagline{position:relative;width:fit-content;max-width:calc(100% - 14px);margin:clamp(18px,5vw,30px) auto -4px;

@@ -123,6 +123,36 @@ export function initialOf(storeName: string): string | null {
   return CJK_PATTERN.test(head) || LATIN_PATTERN.test(head) ? head.toUpperCase() : null;
 }
 
+// ---- 看板：店名を1文字に切り詰めず丸ごと表示するときの上限フォントサイズ ----
+//
+// Issue #4: 看板(kanban.ts)は店名フル表示の上限に --dye-max（dyedTextOf由来）を流用していたが、
+// dyedTextOf は暖簾の染め抜き・短冊の縦組み向けに「5文字を超えたら頭文字1文字にする」設計のため、
+// 6文字以上の屋号は一律「1文字」とみなされ maxRem=DYE_MAX_REM[1]=3.0rem になっていた。
+// 結果、5文字の屋号(1.8rem)より6文字以上の屋号(3.0rem)の方が上限が大きくなる非単調が発生していた。
+// ここでは看板専用に、切り詰めない店名の文字数から単調減少（増加しない）で上限を決める。
+// 1〜5文字は DYE_MAX_REM（短冊・暖簾と共通の表）をそのまま使い、既存の看板の見た目を変えない。
+// 6文字以降は5文字の値(1.8rem)を起点に緩やかに絞り込み、CSS側のclamp下限＝
+// DEFAULT_DYE_MAX_REM(1.6rem)で頭打ちにする（それより長い屋号は横幅とword-breakの折返しに任せる）。
+const NAME_MAX_REM_TAIL: Readonly<Record<number, number>> = {
+  6: 1.7,
+  7: 1.7,
+  8: 1.65,
+  9: 1.65,
+  10: 1.65,
+};
+
+/**
+ * 看板の .kanban__name に使う最大フォントサイズ(rem)を、表示する店名全体の文字数から決める。
+ * dyedTextOf と違い、6文字以上でも1文字に切り詰めない（看板は店名をフル表示するため）。
+ */
+export function nameMaxRemOf(storeName: string): number {
+  const compact = storeName.replace(/[\s　]/gu, "");
+  const length = Array.from(compact).length;
+  if (length <= 0) return DEFAULT_DYE_MAX_REM;
+  if (length <= 5) return DYE_MAX_REM[length] ?? DEFAULT_DYE_MAX_REM;
+  return NAME_MAX_REM_TAIL[length] ?? DEFAULT_DYE_MAX_REM;
+}
+
 // ---- 連絡先（電話tel:リンク・住所の地図リンク・営業時間）----
 //
 // 骨格が変わっても値の作り方（tel:に載せられる形への正規化・地図検索URL）は変えない。
@@ -367,6 +397,7 @@ export function buildSkeletonContext(
     storeName: escapeHtml(input.storeName),
     dyedText: dyed ? escapeHtml(dyed.text) : null,
     dyedMaxRem: dyed?.maxRem ?? DEFAULT_DYE_MAX_REM,
+    nameMaxRem: nameMaxRemOf(input.storeName),
     initial: initial ? escapeHtml(initial) : null,
     areaFull: area ? escapeHtml(area.full) : "",
     word: word ? escapeHtml(word) : "",

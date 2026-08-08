@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { GeneratedContent } from "../src/generation/provider.ts";
 import { renderSite } from "../src/domain/render.ts";
-import { buildSkeletonContext } from "../src/domain/render/parts.ts";
+import { buildSkeletonContext, dyedTextOf, nameMaxRemOf } from "../src/domain/render/parts.ts";
 import { selectPalette, selectSkeleton } from "../src/domain/render/select.ts";
 import { SKELETONS } from "../src/domain/render/skeletons/index.ts";
 import type { SkeletonKey, Temperature } from "../src/domain/render/types.ts";
@@ -275,6 +275,62 @@ test("看板は横長16:10・正方形1:1・縦3:4の写真枠を使い分け、
   }
   const withoutPhoto = renderSite(baseInput({ photo: undefined }), baseContent, { skeleton: "看板" });
   assert.doesNotMatch(withoutPhoto, /<figure class="photo">/u);
+});
+
+// ---- ④' 看板固有: 店名の文字数連動サイズが単調減少する（Issue #4） ----
+
+test("nameMaxRemOf: 店名の文字数が増えるほど上限remは単調に下がる（3/5/6/12文字で確認・6文字以上の非単調バグの直接再現）", () => {
+  const rem3chars = nameMaxRemOf("麦の香"); // 3文字
+  const rem5chars = nameMaxRemOf("あいうえお"); // 5文字
+  const rem6chars = nameMaxRemOf("あいうえおか"); // 6文字（旧実装のバグ：3.0remに跳ね上がっていた）
+  const rem12chars = nameMaxRemOf("あいうえおかきくけこさし"); // 12文字
+
+  assert.ok(rem3chars > rem5chars, `3文字(${rem3chars}) が 5文字(${rem5chars}) 以下になっている`);
+  assert.ok(rem5chars > rem6chars, `5文字(${rem5chars}) が 6文字(${rem6chars}) 以下になっている（Issue #4 の非単調バグ）`);
+  assert.ok(rem6chars > rem12chars, `6文字(${rem6chars}) が 12文字(${rem12chars}) 以下になっている`);
+  assert.equal(rem6chars, 1.7, "6文字の上限remが想定値からずれている");
+  assert.equal(rem12chars, 1.6, "12文字の上限remがCSS側clamp下限(1.6rem)と一致しない");
+});
+
+test("看板の :root は --name-max を持ち、店名が長いほど値が小さくなる（実HTML経由の確認）", () => {
+  const shortName = renderSite(baseInput({ storeName: "炭" }), baseContent, { skeleton: "看板" });
+  const midName = renderSite(baseInput({ storeName: "炭火食堂 まっすぐ" }), baseContent, { skeleton: "看板" });
+  const longName = renderSite(
+    baseInput({ storeName: "とても長い店名のパン工房こむぎのおうち" }),
+    baseContent,
+    { skeleton: "看板" },
+  );
+  const nameMaxOf = (html: string): number => {
+    const match = html.match(/--name-max:\s*([0-9.]+)rem;/u);
+    assert.ok(match, "--name-max が出ていない");
+    return Number(match![1]);
+  };
+  const shortRem = nameMaxOf(shortName);
+  const midRem = nameMaxOf(midName);
+  const longRem = nameMaxOf(longName);
+  assert.ok(shortRem > midRem, `店名1文字(${shortRem}) が 店名9文字(${midRem}) 以下になっている`);
+  assert.ok(midRem > longRem, `店名9文字(${midRem}) が 店名19文字(${longRem}) 以下になっている`);
+  assert.ok(shortName.includes(".kanban__name{") && shortName.includes("var(--name-max)"), "kanban__name が --name-max を参照していない");
+});
+
+test("--dye-max（短冊・暖簾）は今回の変更で挙動が変わらない：6文字以上でも従来どおり1文字染め=3.0remのまま", () => {
+  // dyedTextOf 自体は今回変更していない。看板専用の nameMaxRemOf を新設しただけであることを確認する。
+  const short = dyedTextOf("あいうえお"); // 5文字：そのまま5文字染め
+  const long = dyedTextOf("あいうえおか"); // 6文字：頭文字1文字に切り詰め（従来どおり）
+  assert.ok(short, "5文字の染め抜きがnullになった");
+  assert.equal(short!.text, "あいうえお");
+  assert.equal(short!.maxRem, 1.8, "5文字の--dye-max相当値が変わった");
+  assert.ok(long, "6文字の染め抜きがnullになった");
+  assert.equal(long!.text, "あ", "6文字以上を1文字に切り詰める従来の挙動が変わった");
+  assert.equal(long!.maxRem, 3.0, "6文字以上の--dye-max相当値（頭文字1文字扱い）が変わった");
+
+  for (const { skeleton, industry } of [
+    { skeleton: "短冊" as const, industry: "美容・サロン" as const },
+    { skeleton: "暖簾" as const, industry: "飲食店" as const },
+  ]) {
+    const html = renderSite(baseInput({ industry, storeName: "あいうえおか" }), baseContent, { skeleton });
+    assert.match(html, /--dye-max:\s*3rem;/u, `${skeleton}: 6文字店名の--dye-maxが従来値(3rem)から変わった`);
+  }
 });
 
 // ---- ⑤ 見出しにクリシェ（心温まる/心地よいひととき 等）が出ない ----
