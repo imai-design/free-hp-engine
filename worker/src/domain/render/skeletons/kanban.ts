@@ -141,8 +141,16 @@ body{margin:0;background:var(--night);color:var(--ink);font-family:var(--gothic)
   margin:0 0 clamp(14px,4vw,24px);color:var(--sign-ink);font-size:.76rem;font-weight:800;
   letter-spacing:.16em;text-align:center}
 .kanban__divider{color:var(--sign-ink)}
-.kanban__name{margin:0;color:var(--sign-ink);font-size:clamp(3rem,13vw,7.2rem);font-weight:900;
-  line-height:.98;letter-spacing:-.055em;text-align:center;overflow-wrap:anywhere;
+/*
+ * 店名の長さでフォントサイズを頭打ちにする。--dye-max は他骨格（短冊の縦組み・暖簾の染め抜き）と
+ * 共通の文字数連動サイズ（parts.ts dyedTextOf）で、render.ts が全骨格の:rootに必ず注入している。
+ * 最小値1.6remはdyedMaxRemの取りうる下限（絵文字・記号始まりのDEFAULT_DYE_MAX_REM）に合わせ、
+ * clampのmin>maxで頭打ちが無効化されないようにしてある。
+ * word-break:keep-allで「炭火食堂 まっすぐ」のような分かち書きの店名を単語の途中で折り返さず、
+ * スペースでだけ改行する（それでも収まらない場合だけoverflow-wrap:break-wordが強制的に折る）。
+ */
+.kanban__name{margin:0;color:var(--sign-ink);font-size:clamp(1.6rem,13vw,var(--dye-max));font-weight:900;
+  line-height:.98;letter-spacing:-.055em;text-align:center;word-break:keep-all;overflow-wrap:break-word;
   text-shadow:0 4px 0 rgb(0 0 0/.22),0 8px 18px rgb(0 0 0/.24)}
 .tagline{position:relative;width:fit-content;max-width:calc(100% - 14px);margin:clamp(18px,5vw,30px) auto -4px;
   padding:8px 24px;background:var(--accent);color:var(--accent-ink);font-size:clamp(.82rem,3.5vw,1rem);

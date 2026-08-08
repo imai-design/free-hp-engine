@@ -111,6 +111,14 @@ main{width:100%;max-width:500px;margin:0 auto;padding:40px 20px 52px}
 .meishi__catch::before{content:"";position:absolute;top:0;left:0;width:26px;height:2px;background:var(--seal)}
 .meishi__info{position:relative;z-index:1;margin-top:auto;padding-top:22px;
   font-size:.78rem;line-height:1.9;color:var(--sub);font-feature-settings:"palt" 1}
+/*
+ * 電話・住所のリンク（表面）。無指定だとUAスタイルの既定青リンクになるため明示する。
+ * 背景は常に--card。WCAG AA ink/card（相対輝度から計算、すべて4.5:1以上）:
+ * あたたかい/落ち着いた/さわやか（藍鼠・焦茶・深緑・葡萄・利休鼠、共通のFIXED配色）: 15.41
+ * たのしい（木苺）: 15.29 / しっとり（夜紫）: 14.36
+ */
+.meishi__info a{color:var(--ink);text-decoration:underline;
+  text-decoration-thickness:1px;text-underline-offset:3px}
 
 .fold{display:flex;align-items:center;gap:14px;margin:32px 0 24px;color:var(--footlink);
   font-size:.64rem;font-weight:600;letter-spacing:.52em;text-indent:.52em}
