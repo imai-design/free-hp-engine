@@ -1,5 +1,7 @@
 # free-hp-engine（無料ホームページくん・エンジン）
 
+**English summary:** free-hp-engine is a Cloudflare Worker that generates a one-page website for a small business from just three inputs (store name, industry, one-line description) in about 10 seconds. It runs on Cloudflare Workers + Workers AI (free tier, no API key required by default), keeping generation cost near zero. It is licensed under AGPL-3.0. This is a Japanese-first project, but contributions (new design skeletons, industries, translations, etc.) are welcome — see the Japanese README below and [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+
 3つの入力（店名・業種・ひとこと紹介）から、約10秒でホームページを1枚生成する Cloudflare Worker です。
 [freehp.jp](https://freehp.jp) で本番稼働しています。生成されたページは `https://free-hp-engine.ryoseiworld.workers.dev/s/<slug>` のようなURLでそのまま公開されます。
 
@@ -11,7 +13,7 @@ RYOSEIWORLD のミッションは「ITを全て無料にする」ことです。
 
 ## 特徴
 
-- **4つの骨格（デザインテンプレート）を店名のハッシュから決定的に出し分け** — 名刺・暖簾・短冊・方眼の4型（`worker/src/domain/render/skeletons/`）。同じ店名・住所なら何度作っても同じ骨格・配色になり、チェーン店が近い場所で作り直しても同じ見た目に寄る対策も入っています。
+- **5つの骨格（デザインテンプレート）を店名のハッシュから決定的に出し分け** — 名刺・暖簾・短冊・方眼・看板の5型（`worker/src/domain/render/skeletons/`）。同じ店名・住所なら何度作っても同じ骨格・配色になり、チェーン店が近い場所で作り直しても同じ見た目に寄る対策も入っています。
 - **見出しは事実から決定的に生成** — AIに書かせるのは紹介文の一部だけで、見出し（headline）は入力された事実（店名・地域・業種語）から機械的に組み立てます。「無い事実は作らない」を設計の柱にしています。
 - **WCAG AA準拠** — 全骨格・全配色の組み合わせで、本文色・補助色・見出し色のコントラスト比 4.5:1 を自動テストで担保しています。
 - **テスト109件** — `node --test`（Node標準のテストランナー）でユニットテストを実行します。決定論性・XSS対策（骨格側はエスケープ済み文字列しか受け取らない設計）・入力検証・コントラスト比などをカバーしています。
