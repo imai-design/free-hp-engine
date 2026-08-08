@@ -9,10 +9,45 @@ const FIXED = {
   grid: "#C7CFD2",
 };
 
+/*
+ * 新テーマのWCAG AAコントラスト比（sRGB相対輝度、前景/背景、すべて4.5:1以上）。
+ * 青空インク: ink/paper 14.94, ink/band 13.96, sub/paper 6.54, sub/band 6.11,
+ *   pen/paper 6.30, pen/band 5.89, paper/pen 6.30.
+ * 葡萄酒インク: ink/paper 15.43, ink/band 13.16, sub/paper 9.87, sub/band 8.41,
+ *   pen/paper 8.25, pen/band 7.04, paper/pen 8.25.
+ */
 const PALETTES: readonly Palette[] = [
   { key: "青インク", temp: "calm", mark: "#1F4E79", vars: { ...FIXED, pen: "#1F4E79" } },
   { key: "焦茶インク", temp: "warm", mark: "#6B3B14", vars: { ...FIXED, pen: "#6B3B14" } },
   { key: "緑インク", temp: "fresh", mark: "#1B5545", vars: { ...FIXED, pen: "#1B5545" } },
+  {
+    key: "青空インク",
+    temp: "lively",
+    mark: "#075EAC",
+    vars: {
+      ...FIXED,
+      paper: "#F7FBFF",
+      band: "#EAF4FF",
+      ink: "#18243A",
+      sub: "#4E5C70",
+      grid: "#B6CCE0",
+      pen: "#075EAC",
+    },
+  },
+  {
+    key: "葡萄酒インク",
+    temp: "moody",
+    mark: "#4C2D3B",
+    vars: {
+      ...FIXED,
+      paper: "#12161A",
+      band: "#1E252B",
+      ink: "#F0ECE4",
+      sub: "#B9C0C4",
+      grid: "#46525A",
+      pen: "#D3A1B5",
+    },
+  },
 ];
 
 const HEADINGS = { about: "おぼえがき", highlights: "きめていること", closing: "お立ち寄りの前に" };

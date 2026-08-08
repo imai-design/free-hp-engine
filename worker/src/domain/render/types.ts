@@ -1,12 +1,12 @@
 import type { Industry } from "../validate.ts";
 
 export type SkeletonKey = "名刺" | "暖簾" | "短冊" | "方眼" | "看板";
-export type Temperature = "warm" | "calm" | "fresh";
+export type Temperature = "warm" | "calm" | "fresh" | "lively" | "moody";
 
 export interface Palette {
   /** デバッグ用の名前。<body data-配色> に出す */
   readonly key: string;
-  /** input.colorTheme（あたたかい/落ち着いた/さわやか）との対応 */
+  /** input.colorTheme（あたたかい/落ち着いた/さわやか/たのしい/しっとり）との対応 */
   readonly temp: Temperature;
   /** CSSカスタムプロパティ。キーは "--" を含まない */
   readonly vars: Readonly<Record<string, string>>;

@@ -7,6 +7,8 @@ const TEMPERATURE_OF: Record<ColorTheme, Temperature> = {
   あたたかい: "warm",
   落ち着いた: "calm",
   さわやか: "fresh",
+  たのしい: "lively",
+  しっとり: "moody",
 };
 
 /**

@@ -1,7 +1,7 @@
 import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems, SAMPLE_NOTICE_HTML } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
 
-// 固定トークン（配色に依存しない）。5配色すべてに同じ値を混ぜる。
+// 既存5配色の固定トークン。新テーマは骨格を保ったまま、必要な地色・文字色だけ上書きする。
 const FIXED = {
   card: "#FBFAF6",
   paper: "#F5F3EC",
@@ -13,12 +13,57 @@ const FIXED = {
   footlink: "#DCE3E7",
 };
 
+/*
+ * 新テーマのWCAG AAコントラスト比（sRGB相対輝度、前景/背景、すべて4.5:1以上）。
+ * 木苺: ink/card 15.29, ink/paper 14.84, ink/notice 13.72, sub/card 6.96,
+ *   sub/paper 6.76, seal/card 7.21, seal/paper 7.00, card/seal 7.21,
+ *   foot/ground 6.68, footlink/ground 10.15.
+ * 夜紫: ink/card 14.36, ink/paper 15.86, ink/notice 13.09, sub/card 8.53,
+ *   sub/paper 9.42, seal/card 8.72, seal/paper 9.63, card/seal 8.72,
+ *   foot/ground 11.53, footlink/ground 14.36.
+ */
 const PALETTES: readonly Palette[] = [
   { key: "藍鼠", temp: "calm", mark: "#0F5E6B", vars: { ...FIXED, ground: "#22303A", seal: "#0F5E6B" } },
   { key: "焦茶", temp: "warm", mark: "#8A4A12", vars: { ...FIXED, ground: "#33281F", seal: "#8A4A12" } },
   { key: "深緑", temp: "fresh", mark: "#14614A", vars: { ...FIXED, ground: "#1F3329", seal: "#14614A" } },
   { key: "葡萄", temp: "calm", mark: "#5C3B78", vars: { ...FIXED, ground: "#2C2634", seal: "#5C3B78" } },
   { key: "利休鼠", temp: "fresh", mark: "#4A5A2B", vars: { ...FIXED, ground: "#2B322F", seal: "#4A5A2B" } },
+  {
+    key: "木苺",
+    temp: "lively",
+    mark: "#A5165A",
+    vars: {
+      ...FIXED,
+      card: "#FFFDF7",
+      paper: "#FFF9EE",
+      ink: "#17243A",
+      sub: "#4D596D",
+      notice: "#FFF1B8",
+      ground: "#D6EEFF",
+      seal: "#A5165A",
+      foot: "#43516A",
+      footlink: "#18365E",
+    },
+  },
+  {
+    key: "夜紫",
+    temp: "moody",
+    mark: "#5A314C",
+    vars: {
+      ...FIXED,
+      card: "#221D24",
+      paper: "#171418",
+      ink: "#F4EEE7",
+      sub: "#C3B7BD",
+      rule: "#51444D",
+      deboss: "#2A232A",
+      notice: "#2C242A",
+      ground: "#0B090C",
+      seal: "#E0AFC1",
+      foot: "#CFC2C8",
+      footlink: "#E5D8DD",
+    },
+  },
 ];
 
 const HEADINGS = { about: "この店のはなし", highlights: "うちの流儀", closing: "ご用の際は" };
@@ -100,7 +145,7 @@ main{width:100%;max-width:500px;margin:0 auto;padding:40px 20px 52px}
 .row .v{flex:1;min-width:0;overflow-wrap:anywhere}
 .row a{color:var(--ink);text-decoration:underline;text-underline-offset:4px;
   text-decoration-thickness:1px;display:inline-flex;align-items:center;min-height:44px}
-.sample-notice{max-width:460px;margin:20px auto 0;background:#F0EDE2;border-left:3px solid var(--seal);
+.sample-notice{max-width:460px;margin:20px auto 0;background:var(--notice,#F0EDE2);border-left:3px solid var(--seal);
   border-radius:2px;padding:13px 15px;font-size:.77rem;line-height:1.85}
 footer{color:var(--foot);font-size:.7rem;line-height:1.9;margin-top:26px}
 footer a{color:var(--footlink)}

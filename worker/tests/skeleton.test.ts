@@ -5,8 +5,8 @@ import { renderSite } from "../src/domain/render.ts";
 import { buildSkeletonContext } from "../src/domain/render/parts.ts";
 import { selectPalette, selectSkeleton } from "../src/domain/render/select.ts";
 import { SKELETONS } from "../src/domain/render/skeletons/index.ts";
-import type { SkeletonKey } from "../src/domain/render/types.ts";
-import { INDUSTRIES, type ColorTheme, type Industry, type SiteInput } from "../src/domain/validate.ts";
+import type { SkeletonKey, Temperature } from "../src/domain/render/types.ts";
+import { COLOR_THEMES, INDUSTRIES, validateInput, type ColorTheme, type Industry, type SiteInput } from "../src/domain/validate.ts";
 
 function baseInput(overrides: Partial<SiteInput> = {}): SiteInput {
   return {
@@ -108,6 +108,23 @@ const SKELETON_CASES: readonly { skeleton: SkeletonKey; industry: Industry }[] =
   { skeleton: "看板", industry: "小売・物販" },
 ];
 
+const NEW_THEME_CASES = [
+  {
+    theme: "たのしい",
+    temperature: "lively",
+    palettes: { 名刺: "木苺", 暖簾: "祭青", 短冊: "リボン", 方眼: "青空インク", 看板: "ネオン菫" },
+  },
+  {
+    theme: "しっとり",
+    temperature: "moody",
+    palettes: { 名刺: "夜紫", 暖簾: "宵紫", 短冊: "宵霞", 方眼: "葡萄酒インク", 看板: "黒葡萄" },
+  },
+] as const satisfies readonly {
+  theme: ColorTheme;
+  temperature: Temperature;
+  palettes: Readonly<Record<SkeletonKey, string>>;
+}[];
+
 test("5骨格それぞれがレンダリングでき、--photo-aspect / --photo-max / --dye-max を必ず持つ", () => {
   for (const { skeleton, industry } of SKELETON_CASES) {
     const input = baseInput({ industry });
@@ -118,6 +135,29 @@ test("5骨格それぞれがレンダリングでき、--photo-aspect / --photo-
     assert.match(html, /--dye-max:\s*[0-9.]+rem;/u, `${skeleton}: --dye-maxが無い`);
     assert.ok(html.includes(`data-型="${skeleton}"`), `${skeleton}: data-型が一致しない`);
     assert.match(html, /class="[^"]*tagline[^"]*"/u, `${skeleton}: taglineクラスが無い`);
+  }
+});
+
+test("新テーマ2つは入力検証を通り、各テーマ×5骨格で正しいdata-配色属性までレンダリングされる", () => {
+  assert.deepEqual(COLOR_THEMES, ["あたたかい", "落ち着いた", "さわやか", "たのしい", "しっとり"]);
+
+  for (const { theme, temperature, palettes } of NEW_THEME_CASES) {
+    assert.equal(validateInput(baseInput({ colorTheme: theme })).colorTheme, theme, `${theme}: 入力検証を通らない`);
+
+    for (const { skeleton, industry } of SKELETON_CASES) {
+      const input = baseInput({ colorTheme: theme, industry });
+      const selectedSkeleton = selectSkeleton(input, skeleton);
+      const matchingPalettes = selectedSkeleton.palettes.filter((palette) => palette.temp === temperature);
+      assert.equal(matchingPalettes.length, 1, `${theme} / ${skeleton}: 対応パレットが1つではない`);
+      assert.equal(matchingPalettes[0].key, palettes[skeleton], `${theme} / ${skeleton}: 対応パレット名が違う`);
+
+      const html = renderSite(input, baseContent, { skeleton });
+      assert.ok(html.startsWith("<!doctype html>"), `${theme} / ${skeleton}: HTMLとして壊れている`);
+      assert.ok(
+        html.includes(`<body data-型="${skeleton}" data-配色="${palettes[skeleton]}">`),
+        `${theme} / ${skeleton}: data-配色属性が正しくない`,
+      );
+    }
   }
 });
 
@@ -155,7 +195,7 @@ test("5骨格とも、写真あり/なし・住所なし・店名40文字・店�
   }
 });
 
-// ---- ④ 看板固有: 必須情報・機能・対応業種・3テーマ・写真3形状 ----
+// ---- ④ 看板固有: 必須情報・機能・対応業種・5テーマ・写真3形状 ----
 
 test("看板は店名・キャッチ・連絡先・メニュー・行動ボタン・フッターをすべて表示し、同じ入力から同じHTMLを返す", () => {
   const input = baseInput({
@@ -195,11 +235,13 @@ test("看板の対応業種は飲食店・小売/物販・その他だけ", () =
   assert.deepEqual(kanban.industries, ["飲食店", "小売・物販", "その他"]);
 });
 
-test("看板は、あたたかい・落ち着いた・さわやかの3テーマすべてでレンダリングできる", () => {
+test("看板は5テーマすべてでレンダリングできる", () => {
   const cases: readonly { theme: ColorTheme; palette: string }[] = [
     { theme: "あたたかい", palette: "赤提灯" },
     { theme: "落ち着いた", palette: "夜藍" },
     { theme: "さわやか", palette: "深緑" },
+    { theme: "たのしい", palette: "ネオン菫" },
+    { theme: "しっとり", palette: "黒葡萄" },
   ];
   for (const { theme, palette } of cases) {
     const html = renderSite(baseInput({ colorTheme: theme }), baseContent, { skeleton: "看板" });
@@ -293,10 +335,10 @@ function contrastRatio(a: string, b: string): number {
 
 const AA_MIN_CONTRAST = 4.5;
 
-test("WCAG AA 4.5:1: 名刺の本文色(ink)と補助色(sub)は、5配色すべてでcard/paperの上で基準を満たす", () => {
+test("WCAG AA 4.5:1: 名刺の本文色(ink)と補助色(sub)は、7配色すべてでcard/paperの上で基準を満たす", () => {
   const meishi = SKELETONS.find((skeleton) => skeleton.key === "名刺");
   assert.ok(meishi, "名刺骨格が見つからない");
-  assert.equal(meishi!.palettes.length, 5, "名刺は5配色のはず");
+  assert.equal(meishi!.palettes.length, 7, "名刺は7配色のはず");
   for (const palette of meishi!.palettes) {
     const { ink, sub, card, paper, seal, ground, foot, footlink } = palette.vars;
     assert.ok(contrastRatio(ink, card) >= AA_MIN_CONTRAST, `${palette.key}: ink/card ${contrastRatio(ink, card)}`);
@@ -309,23 +351,26 @@ test("WCAG AA 4.5:1: 名刺の本文色(ink)と補助色(sub)は、5配色すべ
   }
 });
 
-test("WCAG AA 4.5:1: 方眼の見出し色(pen)は本文紙面(paper/band)の上で基準を満たす（罫線grid/paperは装飾専用のため対象外）", () => {
+test("WCAG AA 4.5:1: 方眼の文字色は本文紙面(paper/band)の上で基準を満たす（罫線gridは装飾専用のため対象外）", () => {
   const hogan = SKELETONS.find((skeleton) => skeleton.key === "方眼");
   assert.ok(hogan, "方眼骨格が見つからない");
   for (const palette of hogan!.palettes) {
     const { ink, sub, pen, paper, band } = palette.vars;
     assert.ok(contrastRatio(ink, paper) >= AA_MIN_CONTRAST, `${palette.key}: ink/paper ${contrastRatio(ink, paper)}`);
+    assert.ok(contrastRatio(ink, band) >= AA_MIN_CONTRAST, `${palette.key}: ink/band ${contrastRatio(ink, band)}`);
     assert.ok(contrastRatio(sub, paper) >= AA_MIN_CONTRAST, `${palette.key}: sub/paper ${contrastRatio(sub, paper)}`);
+    assert.ok(contrastRatio(sub, band) >= AA_MIN_CONTRAST, `${palette.key}: sub/band ${contrastRatio(sub, band)}`);
     assert.ok(contrastRatio(pen, paper) >= AA_MIN_CONTRAST, `${palette.key}: pen/paper ${contrastRatio(pen, paper)}`);
     assert.ok(contrastRatio(pen, band) >= AA_MIN_CONTRAST, `${palette.key}: pen/band ${contrastRatio(pen, band)}`);
+    assert.ok(contrastRatio(paper, pen) >= AA_MIN_CONTRAST, `${palette.key}: paper/pen ${contrastRatio(paper, pen)}`);
   }
 });
 
-test("WCAG AA 4.5:1: 看板の3配色は、実際に文字が乗る全8色ペアで基準を満たす", () => {
+test("WCAG AA 4.5:1: 看板の5配色は、実際に文字が乗る全8色ペアで基準を満たす", () => {
   const kanban = SKELETONS.find((skeleton) => skeleton.key === "看板");
   assert.ok(kanban, "看板骨格が見つからない");
-  assert.equal(kanban.palettes.length, 3, "看板は3配色のはず");
-  assert.deepEqual(new Set(kanban.palettes.map((palette) => palette.temp)), new Set(["warm", "calm", "fresh"]));
+  assert.equal(kanban.palettes.length, 5, "看板は5配色のはず");
+  assert.deepEqual(new Set(kanban.palettes.map((palette) => palette.temp)), new Set(["warm", "calm", "fresh", "lively", "moody"]));
 
   const pairs = [
     ["ink", "night"],
@@ -341,6 +386,61 @@ test("WCAG AA 4.5:1: 看板の3配色は、実際に文字が乗る全8色ペア
     for (const [foreground, background] of pairs) {
       const ratio = contrastRatio(palette.vars[foreground], palette.vars[background]);
       assert.ok(ratio >= AA_MIN_CONTRAST, `${palette.key}: ${foreground}/${background} ${ratio.toFixed(2)}:1`);
+    }
+  }
+});
+
+const NEW_PALETTE_TEXT_PAIRS = [
+  {
+    skeleton: "名刺",
+    pairs: [
+      ["ink", "card"], ["ink", "paper"], ["ink", "notice"], ["sub", "card"], ["sub", "paper"],
+      ["seal", "card"], ["seal", "paper"], ["card", "seal"], ["foot", "ground"], ["footlink", "ground"],
+    ],
+  },
+  {
+    skeleton: "暖簾",
+    pairs: [
+      ["sumi", "paper"], ["sumi", "washi"], ["kiji", "paper"], ["kiji", "washi"],
+      ["ai-text", "paper"], ["ai-text", "washi"], ["beni-text", "paper"],
+      ["somenuki", "ai"], ["somenuki", "ai-deep"], ["somenuki", "beni"], ["footer-ink", "ai-deep"],
+    ],
+  },
+  {
+    skeleton: "短冊",
+    pairs: [
+      ["ink", "paper"], ["ink", "surface"], ["sub", "paper"], ["sub", "surface"],
+      ["surface", "strip"], ["strip", "paper"], ["strip", "surface"],
+    ],
+  },
+  {
+    skeleton: "方眼",
+    pairs: [
+      ["ink", "paper"], ["ink", "band"], ["sub", "paper"], ["sub", "band"],
+      ["pen", "paper"], ["pen", "band"], ["paper", "pen"],
+    ],
+  },
+  {
+    skeleton: "看板",
+    pairs: [
+      ["ink", "night"], ["ink", "surface"], ["muted", "night"], ["muted", "surface"],
+      ["sign-ink", "sign"], ["accent", "night"], ["accent", "surface"], ["accent-ink", "accent"],
+    ],
+  },
+] as const satisfies readonly { skeleton: SkeletonKey; pairs: readonly (readonly [string, string])[] }[];
+
+test("WCAG AA 4.5:1: 新2テーマ×5骨格は、実際に文字が乗る全ペアで基準を満たす", () => {
+  for (const { skeleton, pairs } of NEW_PALETTE_TEXT_PAIRS) {
+    const found = SKELETONS.find((candidate) => candidate.key === skeleton);
+    assert.ok(found, `${skeleton}: 骨格が見つからない`);
+    const newPalettes = found.palettes.filter((palette) => palette.temp === "lively" || palette.temp === "moody");
+    assert.equal(newPalettes.length, 2, `${skeleton}: 新テーマのパレットが2つではない`);
+
+    for (const palette of newPalettes) {
+      for (const [foreground, background] of pairs) {
+        const ratio = contrastRatio(palette.vars[foreground], palette.vars[background]);
+        assert.ok(ratio >= AA_MIN_CONTRAST, `${skeleton} / ${palette.key}: ${foreground}/${background} ${ratio.toFixed(2)}:1`);
+      }
     }
   }
 });

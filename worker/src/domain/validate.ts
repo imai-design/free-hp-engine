@@ -6,7 +6,7 @@ export const INDUSTRIES = [
   "修理・住まいのサービス",
   "その他",
 ] as const;
-export const COLOR_THEMES = ["あたたかい", "落ち着いた", "さわやか"] as const;
+export const COLOR_THEMES = ["あたたかい", "落ち着いた", "さわやか", "たのしい", "しっとり"] as const;
 
 export type Industry = (typeof INDUSTRIES)[number];
 export type ColorTheme = (typeof COLOR_THEMES)[number];

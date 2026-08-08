@@ -8,12 +8,45 @@ const FIXED = {
   sub: "#565C55",
 };
 
+/*
+ * 新テーマのWCAG AAコントラスト比（sRGB相対輝度、前景/背景、すべて4.5:1以上）。
+ * リボン: ink/paper 14.85, ink/surface 15.67, sub/paper 6.53, sub/surface 6.89,
+ *   surface/strip 7.34, strip/paper 6.95, strip/surface 7.34.
+ * 宵霞: ink/paper 15.93, ink/surface 14.10, sub/paper 10.00, sub/surface 8.85,
+ *   surface/strip 7.78, strip/paper 8.79, strip/surface 7.78.
+ */
 const PALETTES: readonly Palette[] = [
   { key: "藍", temp: "calm", mark: "#1B3A54", vars: { ...FIXED, strip: "#1B3A54" } },
   { key: "臙脂", temp: "warm", mark: "#6B2333", vars: { ...FIXED, strip: "#6B2333" } },
   { key: "苔", temp: "fresh", mark: "#23402C", vars: { ...FIXED, strip: "#23402C" } },
   { key: "墨", temp: "calm", mark: "#2E2C2A", vars: { ...FIXED, strip: "#2E2C2A" } },
   { key: "菫", temp: "warm", mark: "#4A3A6B", vars: { ...FIXED, strip: "#4A3A6B" } },
+  {
+    key: "リボン",
+    temp: "lively",
+    mark: "#A5165A",
+    vars: {
+      ...FIXED,
+      paper: "#F2FAFF",
+      surface: "#FFFFFF",
+      ink: "#17233B",
+      sub: "#4D5B70",
+      strip: "#A5165A",
+    },
+  },
+  {
+    key: "宵霞",
+    temp: "moody",
+    mark: "#4C2D3B",
+    vars: {
+      ...FIXED,
+      paper: "#121418",
+      surface: "#1D2026",
+      ink: "#F2EEE6",
+      sub: "#BBBFC7",
+      strip: "#D7A6B5",
+    },
+  },
 ];
 
 const HEADINGS = { about: "ここでしていること", highlights: "ふだんのこと", closing: "お越しになる方へ" };

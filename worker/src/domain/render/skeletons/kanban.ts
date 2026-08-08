@@ -11,12 +11,16 @@ import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types
  * 赤提灯: ink/night 15.90, muted/night 10.76, sign-ink/sign 9.35, accent-ink/accent 9.81.
  * 夜藍: ink/night 15.67, muted/night 9.97, sign-ink/sign 9.90, accent-ink/accent 10.16.
  * 深緑: ink/night 15.40, muted/night 10.57, sign-ink/sign 8.24, accent-ink/accent 10.13.
+ * ネオン菫: ink/night 17.08, muted/night 11.19, sign-ink/sign 8.23, accent-ink/accent 11.29.
+ * 黒葡萄: ink/night 16.16, muted/night 10.27, sign-ink/sign 11.18, accent-ink/accent 7.43.
  *
  * うら面（main/footer）で使う残り4ペア — panel本文=ink/surface, .contact-label等=muted/surface,
  * footer a=accent/night, .action・.menu__price=accent/surface（このスキルでは未変更）:
  * 赤提灯: ink/surface 13.85, muted/surface 9.37, accent/night 10.45, accent/surface 9.10.
  * 夜藍: ink/surface 13.19, muted/surface 8.40, accent/night 10.17, accent/surface 8.56.
  * 深緑: ink/surface 12.95, muted/surface 8.89, accent/night 10.01, accent/surface 8.42.
+ * ネオン菫: ink/surface 15.00, muted/surface 9.83, accent/night 11.65, accent/surface 10.23.
+ * 黒葡萄: ink/surface 14.80, muted/surface 9.40, accent/night 7.79, accent/surface 7.13.
  */
 const PALETTES: readonly Palette[] = [
   {
@@ -62,6 +66,36 @@ const PALETTES: readonly Palette[] = [
       "sign-ink": "#FFF3CC",
       accent: "#E3B94F",
       "accent-ink": "#161106",
+    },
+  },
+  {
+    key: "ネオン菫",
+    temp: "lively",
+    mark: "#6B1FA2",
+    vars: {
+      night: "#0C1024",
+      surface: "#171C3D",
+      ink: "#FFF3D6",
+      muted: "#D2C6B4",
+      sign: "#6B1FA2",
+      "sign-ink": "#FFF5D6",
+      accent: "#F4C63D",
+      "accent-ink": "#1C1404",
+    },
+  },
+  {
+    key: "黒葡萄",
+    temp: "moody",
+    mark: "#4B2038",
+    vars: {
+      night: "#090A0E",
+      surface: "#17151B",
+      ink: "#EFE7DE",
+      muted: "#C5B8B5",
+      sign: "#4B2038",
+      "sign-ink": "#F7E8D7",
+      accent: "#C89B52",
+      "accent-ink": "#171006",
     },
   },
 ];
