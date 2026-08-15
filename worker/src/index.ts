@@ -6,9 +6,20 @@ import { createUniqueSlug } from "./domain/slug.ts";
 import { validateInput, ValidationError, type SiteInput } from "./domain/validate.ts";
 import { bearerToken, verifyGoogleIdToken, type GoogleUser } from "./domain/googleAuth.ts";
 import { consumeDailyQuota, DAILY_SITES_PER_USER, nextAiQuotaReset, tokyoDateKey, UserQuotaError } from "./domain/userQuota.ts";
+import { checkDomainAvailability, type AvailabilityStatus, type FetchImpl } from "./domain/domainAvailability.ts";
+import { quoteDomains } from "./domain/domainPricing.ts";
+import { validateDomainRequest, type DomainRequestInput, type DomainRequestMethod } from "./domain/validateDomainRequest.ts";
+
+interface KvListResult {
+  keys: Array<{ name: string }>;
+}
+
+interface WorkerStore extends RateLimitStore {
+  list?: (options: { prefix: string; limit?: number }) => Promise<KvListResult>;
+}
 
 export interface Env {
-  SITES: RateLimitStore;
+  SITES: WorkerStore;
   ANTHROPIC_API_KEY?: string;
   AI?: WorkersAiBinding;
   PUBLIC_BASE_URL?: string;
@@ -24,6 +35,7 @@ export interface Env {
 export interface RequestContext {
   generate?: (input: SiteInput, env: Env) => Promise<GeneratedContent>;
   now?: () => number;
+  fetch?: FetchImpl;
 }
 
 const ALLOWED_ORIGINS = new Set([
@@ -50,7 +62,7 @@ function corsHeaders(request: Request): Headers {
     headers.set("access-control-allow-methods", "POST, GET, OPTIONS");
     // authorizationを許可しないと、ログイン付きのfetchはブラウザの事前確認(preflight)で落ちる。
     // 実際に2026-08-06、これを忘れて「通信に失敗しました」になった。
-    headers.set("access-control-allow-headers", "content-type, authorization");
+    headers.set("access-control-allow-headers", "content-type, authorization, x-batch-key");
     headers.set("vary", "Origin");
   }
   return headers;
@@ -231,6 +243,146 @@ function activePartner(key: string, stored: string | null): SamplePartner | null
   }
 }
 
+const DOMAIN_NEXT_STEPS: Record<DomainRequestMethod, readonly string[]> = {
+  self: [
+    "ドメイン取得の手順書をメールでお送りします（届かない場合は迷惑メールもご確認ください）",
+    "取得できたら、そのドメイン名を返信で教えてください。こちらで設定して公開します",
+    "設定・公開の費用はいただきません",
+  ],
+  wait_crowdfunding: [
+    "取得費用はクラウドファンディングで集める準備をしています。準備が整い次第、順番にメールでご案内します",
+    "お待ちいただく間も、いまのページはそのまま公開されています",
+    "お急ぎになった場合は、同じフォームから『お急ぎ』で送り直してください",
+  ],
+  prepay: [
+    "振込先と金額（ドメインの実費のみ）をメールでご案内します",
+    "ご入金の確認後、通常1〜3日でドメインを取得して設定します",
+    "領収書が必要な場合はメールでお知らせください",
+  ],
+};
+
+interface StoredDomainRequest extends DomainRequestInput {
+  id: string;
+  at: string;
+  availability: Record<string, AvailabilityStatus>;
+  quote: Record<string, number>;
+  status: "new";
+}
+
+function domainRequestId(now: number): string {
+  const date = new Date(now).toISOString().slice(0, 10).replace(/-/gu, "");
+  const bytes = crypto.getRandomValues(new Uint8Array(4));
+  const suffix = Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return `${date}-${suffix}`;
+}
+
+/** src/domain/slug.ts の createUniqueSlug と同じパターン。KVに同じ申込IDが既にあれば作り直す。 */
+async function createUniqueDomainRequestId(store: RateLimitStore, now: number): Promise<string> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const id = domainRequestId(now);
+    if (!(await store.get(`domreq:${id}`))) return id;
+  }
+  throw new Error("could not allocate a unique domain request id");
+}
+
+async function handleDomainRequest(request: Request, env: Env, context: RequestContext): Promise<Response> {
+  const origin = request.headers.get("origin");
+  if (origin && !ALLOWED_ORIGINS.has(origin)) return json({ error: "origin is not allowed" }, 403);
+
+  // /api/generate と同じ歯止め。本文を読む前にヘッダーだけで重すぎるリクエストを弾く。
+  const contentLength = Number(request.headers.get("content-length") ?? "0");
+  if (contentLength > 20_000) return json({ error: "request too large" }, 413);
+
+  // 不正なリクエストを繰り返し送っても予算（レート上限）を消費させるため、
+  // JSONパース・バリデーションより前にレート制限を掛ける。
+  try {
+    await enforceRateLimit(env.SITES, request.headers.get("CF-Connecting-IP") ?? "unknown", context.now?.() ?? Date.now());
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return json({ error: "送信回数の上限に達しました。1時間後にもう一度お試しください。" }, 429, { "retry-after": String(error.retryAfter) });
+    }
+    return json({ error: "rate limit service is unavailable" }, 503);
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await request.text());
+  } catch {
+    return json({ error: "request body must be valid JSON" }, 400);
+  }
+
+  let input: DomainRequestInput;
+  try {
+    input = validateDomainRequest(raw);
+  } catch (error) {
+    return json({ error: error instanceof ValidationError ? error.message : "invalid request" }, 422);
+  }
+
+  const entries = await Promise.all(input.domains.map(async (domain) => [
+    domain,
+    await checkDomainAvailability(domain, context.fetch ?? fetch),
+  ] as const));
+  const availability = Object.fromEntries(entries) as Record<string, AvailabilityStatus>;
+  const quote = quoteDomains(input.domains);
+  const now = context.now?.() ?? Date.now();
+
+  let id: string;
+  try {
+    id = await createUniqueDomainRequestId(env.SITES, now);
+    const stored: StoredDomainRequest = {
+      ...input,
+      id,
+      at: new Date(now).toISOString(),
+      availability,
+      quote,
+      status: "new",
+    };
+    await env.SITES.put(`domreq:${id}`, JSON.stringify(stored));
+  } catch {
+    return json({ error: "お申し込みを保存できませんでした。もう一度お試しください。" }, 503);
+  }
+
+  return json({
+    id,
+    availability,
+    quote,
+    method: input.method,
+    nextSteps: [...DOMAIN_NEXT_STEPS[input.method]],
+  });
+}
+
+async function handleDomainRequests(request: Request, env: Env): Promise<Response> {
+  const key = request.headers.get("x-batch-key");
+  if (!env.BATCH_KEY || !fullScanEqual(key, env.BATCH_KEY)) return json({ error: "not found" }, 404);
+
+  const sinceValue = new URL(request.url).searchParams.get("since");
+  let since = Number.NEGATIVE_INFINITY;
+  if (sinceValue !== null) {
+    since = Date.parse(sinceValue);
+    if (!sinceValue.trim() || !Number.isFinite(since)) return json({ error: "since must be a valid ISO timestamp" }, 422);
+  }
+
+  if (!env.SITES.list) return json({ error: "request store is unavailable" }, 503);
+  try {
+    const listed = await env.SITES.list({ prefix: "domreq:", limit: 200 });
+    const values = await Promise.all(listed.keys.slice(0, 200).map(({ name }) => env.SITES.get(name)));
+    const items = values.flatMap((value): StoredDomainRequest[] => {
+      if (!value) return [];
+      try {
+        const item = JSON.parse(value) as StoredDomainRequest;
+        const at = typeof item.at === "string" ? Date.parse(item.at) : Number.NaN;
+        return Number.isFinite(at) && at >= since ? [item] : [];
+      } catch {
+        return [];
+      }
+    });
+    items.sort((left, right) => Date.parse(left.at) - Date.parse(right.at));
+    return json({ items: items.slice(0, 200) });
+  } catch {
+    return json({ error: "お申し込み一覧を取得できませんでした。" }, 503);
+  }
+}
+
 /**
  * こちらから提案するための見本を1件作る（営業用）。
  * 申込フォーム経由ではないので回数制限をかけず、そのかわり合鍵を要求する。
@@ -305,6 +457,8 @@ export async function handleRequest(request: Request, env: Env, context: Request
   if (request.method === "OPTIONS") return withCors(request, new Response(null, { status: 204 }));
   if (url.pathname === "/api/generate" && request.method === "POST") return withCors(request, await handleGenerate(request, env, context));
   if (url.pathname === "/api/sample" && request.method === "POST") return withCors(request, await handleSample(request, env, context));
+  if (url.pathname === "/api/domain-request" && request.method === "POST") return withCors(request, await handleDomainRequest(request, env, context));
+  if (url.pathname === "/api/domain-requests" && request.method === "GET") return withCors(request, await handleDomainRequests(request, env));
   if (url.pathname.startsWith("/api/") && request.method !== "OPTIONS") return withCors(request, json({ error: "not found" }, 404));
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") {
     return new Response(null, { status: 302, headers: { location: TOP_PAGE_URL } });
