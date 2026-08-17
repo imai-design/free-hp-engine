@@ -2,7 +2,7 @@
 
 ---
 
-# 無料ホームページくん 骨格システム 実装仕様
+# AIホームページ製作所（RYOSEIWORLD） 骨格システム 実装仕様
 
 対象: `worker/src/domain/render.ts`
 前提: `renderSite(input, content, options)` の外形は変えない（`index.ts` は無改修）。CSPも現行のまま。

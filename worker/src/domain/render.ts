@@ -5,7 +5,7 @@ import type { SkeletonKey } from "./render/types.ts";
 import type { SiteInput } from "./validate.ts";
 
 const META_DESCRIPTION_MAX_LENGTH = 120;
-const SITE_NAME = "RYOSEIWORLD 無料ホームページくん";
+const SITE_NAME = "AIホームページ製作所（RYOSEIWORLD）";
 
 export interface RenderSiteOptions {
   publicUrl?: string;

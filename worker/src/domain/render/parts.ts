@@ -349,8 +349,8 @@ export function footerHtml(isSample: boolean): string {
   const contact = 'info@ryoseiworld.co.jp';
   const mail = `<a href="mailto:${contact}">${contact}</a>（<a href="https://freehp.jp/">freehp.jp</a>）`;
   return isSample
-    ? `このページは、RYOSEIWORLD 無料ホームページくんが作った<strong>見本</strong>です。ご連絡がないまま90日たつと、自動的に非公開になります。気に入っていただけたら、そのままお店のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（このお店へのお問い合わせ窓口ではありません）：${mail}`
-    : `このホームページは、RYOSEIWORLD 無料ホームページくんで作りました。無料です。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（このお店へのお問い合わせ窓口ではありません）：${mail}`;
+    ? `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま90日たつと、自動的に非公開になります。気に入っていただけたら、そのままお店のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（このお店へのお問い合わせ窓口ではありません）：${mail}`
+    : `このホームページは、AIホームページ製作所（RYOSEIWORLD）で作りました。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（このお店へのお問い合わせ窓口ではありません）：${mail}`;
 }
 
 /** 見本ページだけに出す「紹介文は仮のもの」の断り書き。 */

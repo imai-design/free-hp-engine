@@ -1,4 +1,4 @@
-# free-hp-engine（無料ホームページくん・エンジン）
+# free-hp-engine（AIホームページ製作所（RYOSEIWORLD）・エンジン）
 
 **English summary:** free-hp-engine is a Cloudflare Worker that generates a one-page website for a small business from just three inputs (store name, industry, one-line description) in about 10 seconds. It runs on Cloudflare Workers + Workers AI (free tier, no API key required by default), keeping generation cost near zero. It is licensed under AGPL-3.0. This is a Japanese-first project, but contributions (new design skeletons, industries, translations, etc.) are welcome — see the Japanese README below and [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
 
