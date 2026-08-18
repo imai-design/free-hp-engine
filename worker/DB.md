@@ -1,0 +1,84 @@
+# 申込情報データベース（D1）
+
+申込フォーム（サイト生成・見本生成・独自ドメイン取得申込）で受け取った入力内容を、Cloudflare D1 の
+`applications` テーブルに記録している。KV（`SITES`）は公開ページ本体とアクセス制御用の値しか持たないため、
+「誰が何を申し込んだか」を一覧・検索・エクスポートする手段としてこちらを使う。
+
+## 一覧の見方（いちばん簡単な方法）
+
+ブラウザのアドレスバーに、次のURLを開くだけでCSVがダウンロードされる（鍵は `~/.freehp-admin-key` の中身）。
+
+```
+https://free-hp-engine.ryoseiworld.workers.dev/api/admin/applications?key=（~/.freehp-admin-keyの中身）&format=csv
+```
+
+- ダウンロードした `applications.csv` をダブルクリックすれば Excel か Numbers で開く（先頭にUTF-8のBOMを付けているので文字化けしない）。
+- 直近分だけ見たいときは `&since=2026-08-01` のように日付を足す（その日の0時(UTC)以降だけに絞られる）。
+- JSONで受け取りたいときは `&format=json` を付ける（プログラムから読むとき用）。
+- 1回のリクエストで最新2,000件まで（created_at の新しい順）。
+
+鍵は `~/.freehp-admin-key` に入っている。中身をコピーして使う。
+
+```bash
+cat ~/.freehp-admin-key
+```
+
+同じIPから短時間に何度も試すと（1時間に5回まで）一時的に弾かれる（鍵の総当たり対策）。それ以上は待つしかない。
+
+## 鍵の場所
+
+| 用途 | ファイル | 備考 |
+|---|---|---|
+| 管理用一覧・CSVエクスポートの鍵 | `~/.freehp-admin-key` | `wrangler secret put ADMIN_KEY` で本番に設定済み。chmod 600 |
+| 見本生成（`/api/sample`）の合鍵 | `~/.freehp-batch-key` | 既存。今回のD1追加とは無関係 |
+
+鍵を作り直したいとき（漏れた・ローテーションしたい）：
+
+```bash
+openssl rand -hex 24 > ~/.freehp-admin-key && chmod 600 ~/.freehp-admin-key
+cd ~/dev/2026-08-03-free-hp-engine-isolated/worker
+cat ~/.freehp-admin-key | npx wrangler secret put ADMIN_KEY
+npx wrangler deploy
+```
+
+## テーブル定義
+
+`migrations/0001_applications.sql`。主な列:
+
+- `kind`: `site`（申込フォームからの本番サイト生成）／ `sample`（営業用見本・90日で自動失効）／ `domain_request`（独自ドメイン取得申込）
+- 店舗情報: `store_name` `business_type` `description` `catchcopy` `mood` `phone` `address` `hours` `menu_text` `reserve_url` `instagram` `line_official` `has_photo`
+- 申込者: `owner_email` `owner_sub`（Googleログイン時のみ）
+- 送信元: `ip_hash`（生IPは保存しない。SHA-256先頭16桁）`user_agent`
+- `partner_key`: 紹介パートナー経由の見本生成なら入る
+- `extra_json`: `domain_request` の追加情報（希望ドメイン・可用性・見積等）をJSON文字列で保持
+- `status` / `note`: 今のところ既定値のまま（あとから手で更新する用の余地）
+
+## データの入り方
+
+`src/index.ts` の `handleGenerate`（本番サイト生成）・`handleSample`（見本生成）・`handleDomainRequest`（ドメイン申込）が、
+それぞれ成功したタイミングで `recordApplication()`（`src/domain/applications.ts`）を呼んでINSERTする。
+
+**D1への書き込みが失敗しても、申込フォーム側の処理（サイト生成そのもの）は成功として扱う**（`try/catch` で握りつぶし、
+`console.error` にだけ残す）。D1が落ちていても訪問者には影響しない設計。
+
+## 既存データの取り込み（バックフィル）
+
+2026-08-18時点で、KVの `owner:*`（Googleログインしたユーザーが作ったサイトの持ち主情報）を確認したところ **0件** だった。
+KV全体442件の内訳は `site:436` `partner_site:2` `domreq:1` `partner:1` `partner_count:1` `ratelimit:1` で、`owner:` は無し。
+つまり、これまでに作られた436件のサイトはすべてログインなし（Googleログイン必須化の前、または未ログインのまま）で作られており、
+`applications` テーブルへ遡って取り込める「誰が作ったか」付きのデータは今のところ存在しない。
+
+今後 `owner:*` が増えたときのために、取り込み手順だけ残しておく（実行スクリプトは未作成。0件だったため作らなかった）。
+
+```bash
+cd ~/dev/2026-08-03-free-hp-engine-isolated/worker
+npx wrangler kv key list --namespace-id 7a182bd4d54d42f1a52eac274b2d4ce1 --remote --prefix owner: --config wrangler.toml
+```
+上記で1件でも出てきたら、各キーの値（`sub` `email` `storeName` `at`）を読み、
+`INSERT OR IGNORE INTO applications (created_at, kind, slug, store_name, owner_email, owner_sub, status, note) VALUES (...)`
+（`slug` は KVキー名 `owner:{slug}` から取り出す。`note = 'backfill from KV owner:'`）で `wrangler d1 execute freehp-applications --remote` に流す。
+
+## 未実装（やっていないこと）
+
+- 毎朝のメールに申込件数を載せる、のような定期通知は**まだ作っていない**。今は上記URLを都度開いて確認する運用。
+- `status`（new/対応済み等）や `note` を管理画面から更新するUIは無い。今のところ `wrangler d1 execute` で直接SQLを打つ以外に更新手段は無い。

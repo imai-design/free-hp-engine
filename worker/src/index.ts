@@ -9,6 +9,7 @@ import { consumeDailyQuota, DAILY_SITES_PER_USER, nextAiQuotaReset, tokyoDateKey
 import { checkDomainAvailability, type AvailabilityStatus, type FetchImpl } from "./domain/domainAvailability.ts";
 import { quoteDomains } from "./domain/domainPricing.ts";
 import { validateDomainRequest, type DomainRequestInput, type DomainRequestMethod } from "./domain/validateDomainRequest.ts";
+import { listApplications, recordApplication, toCsv, type D1Database } from "./domain/applications.ts";
 
 interface KvListResult {
   keys: Array<{ name: string }>;
@@ -30,6 +31,10 @@ export interface Env {
    * 未設定のあいだはログイン不要のまま動く（設定した瞬間に登録制へ切り替わる）。
    */
   GOOGLE_CLIENT_ID?: string;
+  /** 申込情報（applications テーブル）を持つD1。未設定（ローカル・テスト）でも申込処理自体は止めない。 */
+  DB?: D1Database;
+  /** 管理用一覧・CSVエクスポート（/api/admin/applications）の鍵。未設定ならその経路は隠したまま。 */
+  ADMIN_KEY?: string;
 }
 
 export interface RequestContext {
@@ -188,9 +193,10 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
   if (!qa.ok) return json({ error: "生成内容の確認に失敗しました。もう一度お試しください。" }, 422);
   const baseUrl = (env.PUBLIC_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/u, "");
   let slug: string;
+  let publicUrl: string;
   try {
     slug = await createUniqueSlug(env.SITES, input.storeName);
-    const publicUrl = `${baseUrl}/s/${slug}`;
+    publicUrl = `${baseUrl}/s/${slug}`;
     // 写真は画像URLとして別に置く。ページ本体も共有カードも同じURLを参照する。
     const photoUrl = input.photo ? `${publicUrl}/photo` : undefined;
     // 申込フォームから作られたページに期限は付けない。
@@ -209,10 +215,34 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
         { expirationTtl: 60 * 60 * 24 * 400 },
       );
     }
+    // 申込内容の記録。失敗してもここまでの生成・公開は成功しているのでレスポンスは変えない。
+    await recordApplication(env.DB, {
+      createdAt: new Date(context.now?.() ?? Date.now()).toISOString(),
+      kind: "site",
+      slug,
+      publicUrl,
+      storeName: input.storeName,
+      businessType: input.industry,
+      description: input.description,
+      catchcopy: input.catchphrase,
+      mood: input.colorTheme,
+      phone: input.phone,
+      address: input.address,
+      hours: input.businessHours,
+      menuText: input.menuText,
+      reserveUrl: input.reserveUrl,
+      instagram: input.instagram,
+      lineOfficial: input.lineOfficial,
+      hasPhoto: Boolean(input.photo),
+      ownerEmail: user?.email,
+      ownerSub: user?.sub,
+      ip: request.headers.get("CF-Connecting-IP") ?? undefined,
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    });
   } catch {
     return json({ error: "公開処理に失敗しました。もう一度お試しください。" }, 503);
   }
-  return json({ url: `${baseUrl}/s/${slug}`, slug }, 200, { "x-rate-limit-remaining": String(limit.remaining) });
+  return json({ url: publicUrl, slug }, 200, { "x-rate-limit-remaining": String(limit.remaining) });
 }
 
 interface SamplePartner {
@@ -341,6 +371,22 @@ async function handleDomainRequest(request: Request, env: Env, context: RequestC
   } catch {
     return json({ error: "お申し込みを保存できませんでした。もう一度お試しください。" }, 503);
   }
+  // 既存のsiteUrl(/s/{slug})からslugを拾えれば、サイト側の申込(kind='site')と突き合わせられるようにしておく。
+  const slugMatch = input.siteUrl?.match(/\/s\/([a-z0-9-]{4,80})(?:\/|$)/u);
+  await recordApplication(env.DB, {
+    createdAt: new Date(now).toISOString(),
+    kind: "domain_request",
+    slug: slugMatch?.[1],
+    publicUrl: input.siteUrl,
+    storeName: input.storeName,
+    hasPhoto: false,
+    phone: input.phone,
+    ownerEmail: input.email,
+    ip: request.headers.get("CF-Connecting-IP") ?? undefined,
+    userAgent: request.headers.get("user-agent") ?? undefined,
+    note: input.note,
+    extra: { id, domains: input.domains, contactName: input.contactName, method: input.method, availability, quote },
+  });
 
   return json({
     id,
@@ -381,6 +427,60 @@ async function handleDomainRequests(request: Request, env: Env): Promise<Respons
   } catch {
     return json({ error: "お申し込み一覧を取得できませんでした。" }, 503);
   }
+}
+
+/**
+ * 申込情報（applications テーブル）の管理用一覧・CSVエクスポート。
+ * ADMIN_KEY未設定なら経路の存在自体を隠す（handleDomainRequests等と違い、こちらはクエリパラメータで鍵を渡す
+ * ＝ブラウザでURLを直接開いてCSVをダウンロードする使い方を想定しているため）。
+ */
+async function handleAdminApplications(request: Request, env: Env, context: RequestContext): Promise<Response> {
+  if (!env.ADMIN_KEY) return json({ error: "not found" }, 404);
+
+  // 鍵はクエリパラメータで渡す（ブラウザでURLを直接開いてCSVをダウンロードする使い方を想定）。
+  // その分アクセスログやブラウザ履歴に残りやすいので、他の経路より鍵を長く複雑にして運用する前提。
+  // 加えて、鍵の総当たりを本文を読む前に頭打ちにする（/api/domain-requestと同じ考え方）。
+  try {
+    await enforceRateLimit(env.SITES, request.headers.get("CF-Connecting-IP") ?? "unknown", context.now?.() ?? Date.now());
+  } catch (error) {
+    if (error instanceof RateLimitError) {
+      return json({ error: "試行回数の上限に達しました。1時間後にもう一度お試しください。" }, 429, { "retry-after": String(error.retryAfter) });
+    }
+    return json({ error: "rate limit service is unavailable" }, 503);
+  }
+
+  const url = new URL(request.url);
+  const key = url.searchParams.get("key");
+  if (!fullScanEqual(key, env.ADMIN_KEY)) return json({ error: "unauthorized" }, 401);
+  if (!env.DB) return json({ error: "database is unavailable" }, 503);
+
+  const sinceValue = url.searchParams.get("since");
+  let sinceIso: string | null = null;
+  if (sinceValue !== null && sinceValue.trim()) {
+    const parsed = Date.parse(sinceValue);
+    if (!Number.isFinite(parsed)) return json({ error: "since must be a valid date (YYYY-MM-DD)" }, 422);
+    sinceIso = new Date(parsed).toISOString();
+  }
+
+  let rows: Awaited<ReturnType<typeof listApplications>>;
+  try {
+    rows = await listApplications(env.DB, sinceIso);
+  } catch {
+    return json({ error: "申込情報を取得できませんでした。" }, 503);
+  }
+
+  // 個人情報を含むレスポンスなので、共有キャッシュ・ブラウザキャッシュのどちらにも残さない。
+  if (url.searchParams.get("format") === "json") return json({ items: rows }, 200, { "cache-control": "no-store" });
+
+  // 既定はCSV。ExcelやNumbersで開いても文字化けしないよう先頭にUTF-8のBOM(U+FEFF)を付ける。
+  return new Response("\uFEFF" + toCsv(rows), {
+    status: 200,
+    headers: {
+      "content-type": "text/csv; charset=utf-8",
+      "content-disposition": 'attachment; filename="applications.csv"',
+      "cache-control": "no-store",
+    },
+  });
 }
 
 /**
@@ -446,6 +546,29 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
       const count = Number.isSafeInteger(storedCount) && storedCount >= 0 ? storedCount : 0;
       await env.SITES.put(countKey, String(count + 1));
     }
+    // 申込内容の記録。失敗してもここまでの生成・公開は成功しているのでレスポンスは変えない。
+    await recordApplication(env.DB, {
+      createdAt: new Date(context.now?.() ?? Date.now()).toISOString(),
+      kind: "sample",
+      slug,
+      publicUrl,
+      storeName: input.storeName,
+      businessType: input.industry,
+      description: input.description,
+      catchcopy: input.catchphrase,
+      mood: input.colorTheme,
+      phone: input.phone,
+      address: input.address,
+      hours: input.businessHours,
+      menuText: input.menuText,
+      reserveUrl: input.reserveUrl,
+      instagram: input.instagram,
+      lineOfficial: input.lineOfficial,
+      hasPhoto: Boolean(input.photo),
+      partnerKey: partner?.key,
+      ip: request.headers.get("CF-Connecting-IP") ?? undefined,
+      userAgent: request.headers.get("user-agent") ?? undefined,
+    });
     return json({ url: publicUrl, slug });
   } catch {
     return json({ error: "公開処理に失敗しました。" }, 503);
@@ -459,6 +582,7 @@ export async function handleRequest(request: Request, env: Env, context: Request
   if (url.pathname === "/api/sample" && request.method === "POST") return withCors(request, await handleSample(request, env, context));
   if (url.pathname === "/api/domain-request" && request.method === "POST") return withCors(request, await handleDomainRequest(request, env, context));
   if (url.pathname === "/api/domain-requests" && request.method === "GET") return withCors(request, await handleDomainRequests(request, env));
+  if (url.pathname === "/api/admin/applications" && request.method === "GET") return withCors(request, await handleAdminApplications(request, env, context));
   if (url.pathname.startsWith("/api/") && request.method !== "OPTIONS") return withCors(request, json({ error: "not found" }, 404));
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") {
     return new Response(null, { status: 302, headers: { location: TOP_PAGE_URL } });

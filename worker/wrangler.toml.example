@@ -13,6 +13,12 @@ binding = "SITES"
 # Create with: npx wrangler kv namespace create SITES
 id = "YOUR_KV_NAMESPACE_ID"
 
+[[d1_databases]]
+binding = "DB"
+database_name = "freehp-applications"
+# Create with: npx wrangler d1 create freehp-applications
+id = "REPLACE_ME"
+
 [vars]
 PUBLIC_BASE_URL = "https://your-worker-subdomain.workers.dev"
 # Googleログインのクライアント ID（公開値。これを設定した瞬間に登録制が有効になる）
