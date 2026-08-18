@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { GeneratedContent } from "../src/generation/provider.ts";
 import { renderSite } from "../src/domain/render.ts";
-import { buildSkeletonContext, dyedTextOf, nameMaxRemOf, resolveHeadlineWord } from "../src/domain/render/parts.ts";
+import { buildSkeletonContext, dyedTextOf, nameMaxRemOf, resolveHeadlineWord, shouldDropHeadlineWord } from "../src/domain/render/parts.ts";
 import { selectPalette, selectSkeleton } from "../src/domain/render/select.ts";
 import { KANBAN, SKELETONS } from "../src/domain/render/skeletons/index.ts";
 import type { SkeletonKey, Temperature } from "../src/domain/render/types.ts";
@@ -454,6 +454,40 @@ test("看板: 見本の仮店名（あなたの◯◯（見本）」でも、見
   const palette = selectPalette(KANBAN, input, false);
   const ctx = buildSkeletonContext(input, baseContent, KANBAN, palette, undefined, false);
   assert.ok(!ctx.headline.includes("小売・物販"), `見出しに「小売・物販」が直入れされた → "${ctx.headline}"`);
+  // 言い換え後の「お店」も、見本の仮店名では「お店の◯◯です。」の形にしない（2026-08-19追加指摘）。
+  assert.ok(!ctx.headline.startsWith("お店の"), `見出しが「お店の」から始まる機械的な形のまま → "${ctx.headline}"`);
+  assert.ok(!ctx.headline.startsWith("小売・物販の"), `見出しが「小売・物販の」から始まる機械的な形のまま → "${ctx.headline}"`);
+});
+
+test("shouldDropHeadlineWord: 「お店」・店名との重複・見本の仮店名（あなたの〜）はword使用型を落とす", () => {
+  assert.equal(shouldDropHeadlineWord(null, "麦の香"), false, "wordが無ければ落とす理由が無い");
+  assert.equal(shouldDropHeadlineWord("お店", "麦の香"), true, "「お店」は一般名詞すぎるので常に落とす");
+  assert.equal(shouldDropHeadlineWord("珈琲", "麦の香珈琲"), true, "wordが店名にも含まれるなら落とす（重複回避）");
+  assert.equal(shouldDropHeadlineWord("サロン", "あなたの果樹園（見本）"), true, "店名が「あなたの」で始まる見本名なら落とす");
+  assert.equal(shouldDropHeadlineWord("サロン", "麦の香"), false, "重複も見本名も無ければ落とさない");
+});
+
+test("店名に見出し語と同じ名詞が含まれるとき（例: 店名が「◯◯珈琲」でジャンル語も「珈琲」）、見出しはword使用型を避け店名主役の型になる", () => {
+  // area.full = "東京都武蔵野市"（parseAreaのAREA_PATTERNは区市町村の1文字目にも
+  // マッチしうるため、「〜区」を含む住所は区で打ち切られる。「市」止まりの町名なら安定する）。
+  const AREA_FULL = "東京都武蔵野市";
+  for (const skeleton of SKELETONS) {
+    if (!skeleton.industries.includes("飲食店")) continue;
+    for (let i = 0; i < 10; i += 1) {
+      const input = baseInput({
+        industry: "飲食店",
+        storeName: `麦の香珈琲${i}`,
+        address: `${AREA_FULL}吉祥寺本町${i}-1-1`,
+        catchphrase: `${AREA_FULL}の珈琲`, // parseGenre で「珈琲」を拾わせる
+      });
+      const palette = selectPalette(skeleton, input, false);
+      const ctx = buildSkeletonContext(input, baseContent, skeleton, palette, undefined, false);
+      assert.ok(
+        !ctx.headline.includes("珈琲の"),
+        `${skeleton.key}: 見出しに「珈琲の」（店名と重複するジャンル語直入れ）が出た → "${ctx.headline}"`,
+      );
+    }
+  }
 });
 
 // ---- WCAG AA 4.5:1（自分でも1配色は抜き打ちで検算する。DESIGN_SPEC.md §9-2 その10） ----

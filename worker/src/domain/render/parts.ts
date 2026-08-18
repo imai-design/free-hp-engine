@@ -101,6 +101,27 @@ const HEADLINE_INDUSTRY_WORDS: Record<Industry, string | null> = {
 export const resolveHeadlineWord = (genre: string | null, industry: Industry): string | null =>
   genre ?? HEADLINE_INDUSTRY_WORDS[industry];
 
+// ---- 見出し語と店名の重複回避（2026-08-19追加指摘）----
+//
+// resolveHeadlineWord で「お店」等に言い換えても、次の2パターンはまだ機械的になる。
+//  1. word が「お店」: 「お店の◯◯です。」は一般名詞すぎてキャッチコピーとして不自然。
+//  2. word（またはジャンル語）が店名にも現れる: 「珈琲の○○珈琲です。」のように名詞が重複する。
+//     店名が見本の仮店名「あなたの◯◯（見本）」で始まるときも同様に、
+//     「お店のあなたの果樹園（見本）です。」のような不自然な文になる。
+// このいずれかに当たる場合は word を落とし、HEADLINES を店名だけで組む型
+//（「その名は、◯◯。」「◯◯、はじめます。」等）に譲る。
+
+const GENERIC_HEADLINE_WORD = "お店";
+const SAMPLE_STORE_NAME_PREFIX = "あなたの";
+
+/** word を見出しで使わず、店名主役の型に譲るべきかどうか。 */
+export function shouldDropHeadlineWord(word: string | null, storeName: string): boolean {
+  if (!word) return false;
+  if (word === GENERIC_HEADLINE_WORD) return true;
+  if (storeName.includes(word)) return true;
+  return storeName.startsWith(SAMPLE_STORE_NAME_PREFIX);
+}
+
 // ---- クリシェ除去 ----
 //
 // 2026-08-05に生成済みページから採取した、全店で繰り返された言い回し。
@@ -412,7 +433,8 @@ export function buildSkeletonContext(
   const area = parseArea(input.address);
   const genre = parseGenre(input.catchphrase, area);
   const word = resolveWord(genre, input.industry);
-  const headlineWord = resolveHeadlineWord(genre, input.industry);
+  const headlineWordRaw = resolveHeadlineWord(genre, input.industry);
+  const headlineWord = shouldDropHeadlineWord(headlineWordRaw, input.storeName) ? null : headlineWordRaw;
   const seed = seedOf(input);
   const rawHeadline = buildHeadline(skeleton.headlines, buildHeadlineParts(input, area, headlineWord), seed);
   const lead = hasCliche(content.subheadline) ? "" : content.subheadline;
