@@ -346,7 +346,7 @@ export function buildPhotoInfo(input: SiteInput, photoUrl: string | undefined): 
  * 見本は「連絡がなければ90日で消える」、申込ページは「期限なし」＝実装（KVのTTL有無）と一致させる。
  */
 export function footerHtml(isSample: boolean): string {
-  const contact = 'info@ryoseiworld.co.jp';
+  const contact = 'info@freehp.jp';
   const mail = `<a href="mailto:${contact}">${contact}</a>（<a href="https://freehp.jp/">freehp.jp</a>）`;
   return isSample
     ? `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま90日たつと、自動的に非公開になります。気に入っていただけたら、そのままお店のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（このお店へのお問い合わせ窓口ではありません）：${mail}`

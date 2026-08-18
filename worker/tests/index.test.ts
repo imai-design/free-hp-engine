@@ -114,7 +114,7 @@ test("生成HTML: 申込ページのフッターは「期限はありません�
   // お客さんが自分で作ったページは消さない（KVにTTLを付けない実装と文言を一致させる）
   assert.ok(html.includes("期限はありません"));
   assert.ok(!html.includes("90日"));
-  assert.ok(html.includes('<a href="mailto:info@ryoseiworld.co.jp">info@ryoseiworld.co.jp</a>'));
+  assert.ok(html.includes('<a href="mailto:info@freehp.jp">info@freehp.jp</a>'));
   assert.ok(html.includes('<a href="https://freehp.jp/">freehp.jp</a>'));
 });
 
