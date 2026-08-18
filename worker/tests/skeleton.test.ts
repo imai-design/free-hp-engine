@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { GeneratedContent } from "../src/generation/provider.ts";
 import { renderSite } from "../src/domain/render.ts";
-import { buildSkeletonContext, dyedTextOf, nameMaxRemOf } from "../src/domain/render/parts.ts";
+import { buildSkeletonContext, dyedTextOf, nameMaxRemOf, resolveHeadlineWord } from "../src/domain/render/parts.ts";
 import { selectPalette, selectSkeleton } from "../src/domain/render/select.ts";
-import { SKELETONS } from "../src/domain/render/skeletons/index.ts";
+import { KANBAN, SKELETONS } from "../src/domain/render/skeletons/index.ts";
 import type { SkeletonKey, Temperature } from "../src/domain/render/types.ts";
 import { COLOR_THEMES, INDUSTRIES, validateInput, type ColorTheme, type Industry, type SiteInput } from "../src/domain/validate.ts";
 
@@ -377,6 +377,83 @@ test("lead(そえがき)とhighlightsのクリシェは表示前に落ちる", (
     // クリシェでない項目まで道連れで消えていないことも確認する
     assert.ok(html.includes("駅から徒歩3分です"), `${skeleton}: クリシェでない項目まで消えている`);
   }
+});
+
+// ---- ⑥ 見出しに業種ラベル（審査カテゴリ名）がそのまま入らない（2026-08-19指摘の再発防止） ----
+//
+// 実例: https://free-hp-engine.ryoseiworld.workers.dev/s/site-0n6h0n0m4c で
+// 見出しが「小売・物販のあなたの果樹園（見本）です。」となり、審査カテゴリの札が
+// 地の文にそのまま入って機械的だった。kanban__meta 等のバッジ表示（ctx.word）は
+// 業種ラベルのままでよいが、見出し文（ctx.headline）にだけは出てはいけない。
+
+test("resolveHeadlineWord: 業種ラベルは見出し用に自然な言い方へ言い換わる（生の審査カテゴリ名は返さない）", () => {
+  const EXPECTED_HEADLINE_WORD: Record<Industry, string | null> = {
+    飲食店: "お店",
+    "美容・サロン": "サロン",
+    "教室・スクール": "教室",
+    "小売・物販": "お店",
+    "修理・住まいのサービス": "暮らしの相談先",
+    その他: null,
+  };
+  for (const industry of INDUSTRIES) {
+    assert.equal(
+      resolveHeadlineWord(null, industry),
+      EXPECTED_HEADLINE_WORD[industry],
+      `${industry}: 見出し用の言い換えが期待値と違う`,
+    );
+    // 生の業種ラベル自体（Industry文字列そのもの）を見出しにそのまま返してはいけない
+    // （「美容・サロン」「その他」はもともと言い換え済み/nullなので対象外）。
+    if (industry !== "美容・サロン" && industry !== "その他") {
+      assert.notEqual(
+        resolveHeadlineWord(null, industry),
+        industry,
+        `${industry}: 見出し用の言い換えが業種ラベルそのままになっている`,
+      );
+    }
+  }
+});
+
+test("見出し(h1相当)に業種ラベルがそのまま入らない（5骨格×対応業種を総当たり）", () => {
+  // 言い換え前の生の業種ラベル。ページ内の他要素（kanban__meta のバッジ等）には出てよいが、
+  // 見出し文にだけは出てはいけない。
+  const RAW_INDUSTRY_LABEL: Record<Industry, string | null> = {
+    飲食店: "飲食店",
+    "美容・サロン": null, // 元から「サロン」に短縮済みで、業種名と見出し語が一致しないため対象外
+    "教室・スクール": "教室・スクール",
+    "小売・物販": "小売・物販",
+    "修理・住まいのサービス": "修理・住まいのサービス",
+    その他: null,
+  };
+  for (const skeleton of SKELETONS) {
+    for (const industry of skeleton.industries) {
+      const rawLabel = RAW_INDUSTRY_LABEL[industry];
+      if (!rawLabel) continue;
+      for (let i = 0; i < 20; i += 1) {
+        const input = baseInput({
+          industry,
+          storeName: `見本の店${i}号`,
+          address: i % 2 === 0 ? undefined : `東京都渋谷区代々木${i}-1-1`,
+        });
+        const palette = selectPalette(skeleton, input, false);
+        const ctx = buildSkeletonContext(input, baseContent, skeleton, palette, undefined, false);
+        assert.ok(
+          !ctx.headline.includes(rawLabel),
+          `${skeleton.key} / ${industry}: 見出しに業種ラベル「${rawLabel}」がそのまま出た → "${ctx.headline}"`,
+        );
+      }
+    }
+  }
+});
+
+test("看板: 見本の仮店名（あなたの◯◯（見本）」でも、見出しが「業種ラベル＋店名」の機械的な形にならない（実例site-0n6h0n0m4c相当の再現）", () => {
+  const input = baseInput({
+    industry: "小売・物販",
+    storeName: "あなたの果樹園（見本）",
+    address: undefined, // areaを外し、word単独パターンも踏ませる
+  });
+  const palette = selectPalette(KANBAN, input, false);
+  const ctx = buildSkeletonContext(input, baseContent, KANBAN, palette, undefined, false);
+  assert.ok(!ctx.headline.includes("小売・物販"), `見出しに「小売・物販」が直入れされた → "${ctx.headline}"`);
 });
 
 // ---- WCAG AA 4.5:1（自分でも1配色は抜き打ちで検算する。DESIGN_SPEC.md §9-2 その10） ----

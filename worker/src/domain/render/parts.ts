@@ -64,6 +64,9 @@ export const isOwnerVoice = (catchphrase: string, area: Area | null): boolean =>
   parseGenre(catchphrase, area) === null;
 
 // ---- 業種語 ----
+//
+// kanban__meta 等の「小売・物販／東京都渋谷区」のようなラベル行では、審査カテゴリの名前を
+// そのまま出す（バッジ表示なので機械的でもよい・むしろ業種を明示する役目）。
 
 const INDUSTRY_WORDS: Record<Industry, string | null> = {
   飲食店: "飲食店",
@@ -77,6 +80,26 @@ const INDUSTRY_WORDS: Record<Industry, string | null> = {
 /** ジャンル語（カフェ）を最優先、無ければ業種語。どちらも無ければ null。 */
 export const resolveWord = (genre: string | null, industry: Industry): string | null =>
   genre ?? INDUSTRY_WORDS[industry];
+
+// ---- 見出し（h1相当）専用の業種語 ----
+//
+// HEADLINES は自然文（「◯◯の△△です。」）に組み込むため、上の INDUSTRY_WORDS
+// をそのまま使うと「小売・物販のあなたの果樹園（見本）です。」のように審査カテゴリの
+// 札が地の文に直入れされて機械的になる（2026-08-19指摘、実例：
+// https://free-hp-engine.ryoseiworld.workers.dev/s/site-0n6h0n0m4c ）。
+// 見出しにだけ、文として自然に置ける言い方に言い換えたものを渡す。
+const HEADLINE_INDUSTRY_WORDS: Record<Industry, string | null> = {
+  飲食店: "お店",
+  "美容・サロン": "サロン",
+  "教室・スクール": "教室",
+  "小売・物販": "お店",
+  "修理・住まいのサービス": "暮らしの相談先",
+  その他: null,
+};
+
+/** 見出し文用のジャンル語（カフェ）を最優先、無ければ見出し用に言い換えた業種語。どちらも無ければ null。 */
+export const resolveHeadlineWord = (genre: string | null, industry: Industry): string | null =>
+  genre ?? HEADLINE_INDUSTRY_WORDS[industry];
 
 // ---- クリシェ除去 ----
 //
@@ -389,8 +412,9 @@ export function buildSkeletonContext(
   const area = parseArea(input.address);
   const genre = parseGenre(input.catchphrase, area);
   const word = resolveWord(genre, input.industry);
+  const headlineWord = resolveHeadlineWord(genre, input.industry);
   const seed = seedOf(input);
-  const rawHeadline = buildHeadline(skeleton.headlines, buildHeadlineParts(input, area, word), seed);
+  const rawHeadline = buildHeadline(skeleton.headlines, buildHeadlineParts(input, area, headlineWord), seed);
   const lead = hasCliche(content.subheadline) ? "" : content.subheadline;
   const highlights = content.highlights.filter((item) => item.trim().length > 0 && !hasCliche(item));
   const tagline = isOwnerVoice(input.catchphrase, area) ? input.catchphrase : "";

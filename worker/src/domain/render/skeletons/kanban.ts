@@ -104,12 +104,15 @@ const HEADINGS = { about: "うちの話", highlights: "大事にしているこ�
 const CONTACT_LABELS = { phone: "電話", address: "場所", hours: "営業時間" };
 
 // 太く短い口上に揃え、看板の店名を主役にしたまま事実だけを伝える。
+// 最後の2つは area も word も無い（＝見本の仮店名「あなたの果樹園（見本）」等）ときの受け皿。
+// 店名だけに依存するので常に使え、業種名を含まないぶん見本名でも機械的に見えない。
 const HEADLINES: readonly ((parts: HeadlineParts) => string | null)[] = [
   (p) => (p.area && p.word ? `${p.area}の${p.word}、${p.store}。` : null),
   (p) => (p.area && p.word ? `${p.store}。${p.area}で営む${p.word}です。` : null),
   (p) => (p.area ? `${p.store}は、${p.area}にあります。` : null),
   (p) => (p.word ? `${p.word}の${p.store}です。` : null),
   (p) => `その名は、${p.store}。`,
+  (p) => `${p.store}、はじめます。`,
 ];
 
 const CSS = `
