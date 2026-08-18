@@ -1,4 +1,4 @@
-import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems, SAMPLE_NOTICE_HTML } from "../parts.ts";
+import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
 
 const FIXED = {
@@ -141,7 +141,7 @@ function body(ctx: SkeletonContext): string {
   const kuni = ctx.word ? `<p class="kuni industry">${ctx.word}</p>` : "";
   const tagline = ctx.tagline ? `<p class="tagline">${ctx.tagline}</p>` : "";
   const lead = ctx.lead ? `<p class="lead">${ctx.lead}</p>` : "";
-  const sampleNotice = ctx.isSample ? `<p class="sample-notice">${SAMPLE_NOTICE_HTML}</p>` : "";
+  const sampleNotice = ctx.isSample ? `<p class="sample-notice">${ctx.sampleNoticeHtml}</p>` : "";
   const photo = ctx.photo
     ? `<figure class="photo"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`
     : "";

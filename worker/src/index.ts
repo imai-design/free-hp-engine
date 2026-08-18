@@ -2,8 +2,10 @@ import { generateContent, ProviderError, type GeneratedContent, type WorkersAiBi
 import { qaContent } from "./domain/qa.ts";
 import { enforceRateLimit, RateLimitError, type RateLimitStore } from "./domain/rateLimit.ts";
 import { renderSite } from "./domain/render.ts";
+import { SKELETONS } from "./domain/render/skeletons/index.ts";
+import type { SkeletonKey } from "./domain/render/types.ts";
 import { createUniqueSlug } from "./domain/slug.ts";
-import { validateInput, ValidationError, type SiteInput } from "./domain/validate.ts";
+import { validateInput, validateSampleSource, ValidationError, type SampleSource, type SiteInput } from "./domain/validate.ts";
 import { bearerToken, verifyGoogleIdToken, type GoogleUser } from "./domain/googleAuth.ts";
 import { consumeDailyQuota, DAILY_SITES_PER_USER, nextAiQuotaReset, tokyoDateKey, UserQuotaError } from "./domain/userQuota.ts";
 import { checkDomainAvailability, type AvailabilityStatus, type FetchImpl } from "./domain/domainAvailability.ts";
@@ -559,6 +561,21 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
   } catch (error) {
     return json({ error: error instanceof ValidationError ? error.message : "invalid request" }, 400);
   }
+  // sampleSource（断り書きの文言）とskeleton（骨格の固定）は、お店データ(SiteInput)ではなく
+  // リクエスト直下のメタ情報として受け取る。raw はここまで validateInput を通っているのでオブジェクト確定。
+  const rawObject = raw as Record<string, unknown>;
+  let sampleSource: SampleSource;
+  try {
+    sampleSource = validateSampleSource(rawObject.sampleSource);
+  } catch (error) {
+    return json({ error: error instanceof ValidationError ? error.message : "invalid request" }, 400);
+  }
+  let skeletonKey: SkeletonKey | undefined;
+  if (rawObject.skeleton !== undefined && rawObject.skeleton !== null && rawObject.skeleton !== "") {
+    const found = SKELETONS.find((skeleton) => skeleton.key === rawObject.skeleton);
+    if (!found) return json({ error: "skeleton is invalid" }, 400);
+    skeletonKey = found.key;
+  }
   let content: GeneratedContent;
   try {
     content = await (context.generate ?? generateContent)(input, env);
@@ -578,7 +595,7 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
     const publicUrl = `${baseUrl}/s/${slug}`;
     const photoUrl = input.photo ? `${publicUrl}/photo` : undefined;
     if (input.photo) await env.SITES.put(`photo:${slug}`, input.photo, { expirationTtl: SAMPLE_TTL_SECONDS });
-    const html = renderSite(input, content, { publicUrl, photoUrl, sample: true });
+    const html = renderSite(input, content, { publicUrl, photoUrl, sample: true, sampleSource, skeleton: skeletonKey });
     await env.SITES.put(`site:${slug}`, html, { expirationTtl: SAMPLE_TTL_SECONDS });
     if (partner) {
       const now = context.now?.() ?? Date.now();

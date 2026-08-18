@@ -1,6 +1,6 @@
 import type { GeneratedContent } from "../../generation/provider.ts";
 import { readImageSize, type ImageSize, type PhotoShape } from "../imageSize.ts";
-import type { Industry, SiteInput } from "../validate.ts";
+import type { Industry, SampleSource, SiteInput } from "../validate.ts";
 import { pickIndex, seedOf } from "./hash.ts";
 import { buildHeadline } from "./headline.ts";
 import type {
@@ -353,9 +353,19 @@ export function footerHtml(isSample: boolean): string {
     : `このホームページは、AIホームページ製作所（RYOSEIWORLD）で作りました。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（このお店へのお問い合わせ窓口ではありません）：${mail}`;
 }
 
-/** 見本ページだけに出す「紹介文は仮のもの」の断り書き。 */
-export const SAMPLE_NOTICE_HTML =
-  "このページは、地図サービスの公開情報だけを使って作った<strong>見本</strong>です。紹介文はこちらで仮に書いたもので、お店に伺って書いたものではありません。ご連絡いただければ、お店の言葉に書き直してお渡しします。";
+/**
+ * 見本ページだけに出す「紹介文は仮のもの」の断り書き。sampleSourceで文言を変える
+ * （2026-08-18追加：Threads自動営業から作った見本に「地図サービスの公開情報」と書くと事実と異なるため）。
+ */
+const SAMPLE_NOTICE_BY_SOURCE: Readonly<Record<SampleSource, string>> = {
+  map: "このページは、地図サービスの公開情報だけを使って作った<strong>見本</strong>です。紹介文はこちらで仮に書いたもので、お店に伺って書いたものではありません。ご連絡いただければ、お店の言葉に書き直してお渡しします。",
+  threads:
+    "このページは、Threadsでのご投稿を拝見して、こちらで仮に作った<strong>見本</strong>です。名前や内容は仮のもので、ご連絡いただければ本物に作り直してお渡しします。ご連絡がなければ90日で自動的に消えます。",
+};
+
+export function sampleNoticeOf(source: SampleSource): string {
+  return SAMPLE_NOTICE_BY_SOURCE[source];
+}
 
 // ---- SkeletonContext の組み立て ----
 
@@ -374,6 +384,7 @@ export function buildSkeletonContext(
   palette: Palette,
   photoUrl: string | undefined,
   isSample: boolean,
+  sampleSource: SampleSource = "map",
 ): SkeletonContext {
   const area = parseArea(input.address);
   const genre = parseGenre(input.catchphrase, area);
@@ -405,6 +416,7 @@ export function buildSkeletonContext(
     actions: buildActions(input),
     photo: buildPhotoInfo(input, photoUrl),
     isSample,
+    sampleNoticeHtml: isSample ? sampleNoticeOf(sampleSource) : "",
     palette,
   };
 }

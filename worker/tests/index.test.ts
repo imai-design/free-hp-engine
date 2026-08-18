@@ -530,6 +530,68 @@ test("見本はnoindexと「仮の文章」の断りつきで作られ、回数�
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/u);
 });
 
+// ---- 見本の断り書き文言の出し分け（2026-08-18追加：sampleSource） ----
+
+test("sampleSourceを省略すると従来どおり「地図サービスの公開情報」の断り書きになる（後方互換）", async () => {
+  const store = new MemoryKv();
+  const response = await handleRequest(
+    new Request("https://example.com/api/sample", { method: "POST", headers: { "x-batch-key": "correct-key" }, body: JSON.stringify(validInput) }),
+    { ...env(), SITES: store, BATCH_KEY: "correct-key" }, { generate: stubProvider });
+  const { slug } = await response.json() as { slug: string };
+  const html = store.values.get(`site:${slug}`) as string;
+  assert.ok(html.includes("地図サービスの公開情報"), "map版の断り書きが出ていない");
+  assert.ok(!html.includes("Threadsでのご投稿"), "指定していないのにThreads版の文言が混ざっている");
+});
+
+test("sampleSource:threadsを指定すると「Threadsでのご投稿」の断り書きになり、地図由来の文言は出ない", async () => {
+  const store = new MemoryKv();
+  const response = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST", headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, sampleSource: "threads" }),
+    }),
+    { ...env(), SITES: store, BATCH_KEY: "correct-key" }, { generate: stubProvider });
+  assert.equal(response.status, 200);
+  const { slug } = await response.json() as { slug: string };
+  const html = store.values.get(`site:${slug}`) as string;
+  assert.ok(html.includes("Threadsでのご投稿を拝見して"), "threads版の断り書きが出ていない");
+  assert.ok(html.includes("90日で自動的に消えます"), "threads版の90日の記述が出ていない");
+  assert.ok(!html.includes("地図サービスの公開情報"), "地図由来の文言が残っている");
+});
+
+test("不正なsampleSourceは400を返す", async () => {
+  const response = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST", headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, sampleSource: "unknown" }),
+    }),
+    { ...env(), BATCH_KEY: "correct-key" }, { generate: stubProvider });
+  assert.equal(response.status, 400);
+});
+
+test("skeletonを指定すると見本の骨格を固定でき、業種に無関係な値なら400を返す", async () => {
+  const store = new MemoryKv();
+  const testEnv = { ...env(), SITES: store, BATCH_KEY: "correct-key" };
+  const ok = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST", headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, skeleton: "看板" }),
+    }),
+    testEnv, { generate: stubProvider });
+  assert.equal(ok.status, 200);
+  const { slug } = await ok.json() as { slug: string };
+  const html = store.values.get(`site:${slug}`) as string;
+  assert.ok(html.includes('data-型="看板"'), "指定した骨格(看板)で作られていない");
+
+  const bad = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST", headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, skeleton: "存在しない骨格" }),
+    }),
+    testEnv, { generate: stubProvider });
+  assert.equal(bad.status, 400);
+});
+
 test("申込フォーム経由のページにはnoindexを付けない", async () => {
   const store = new MemoryKv();
   const response = await handleRequest(request(validInput), { ...env(), SITES: store }, { generate: stubProvider });

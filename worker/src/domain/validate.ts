@@ -48,6 +48,23 @@ export interface SiteInput {
   lineOfficial?: string;
 }
 
+// ---- 見本の元ネタ（sampleSource・2026-08-18追加） ----
+//
+// 見本ページ下部の断り書きの文言を変えるためだけの値。お店データ(SiteInput)には含めず、
+// /api/sample のリクエスト直下で受け取る（handleSample側で読み取り、renderSiteのoptionsへ渡す）。
+
+export const SAMPLE_SOURCES = ["map", "threads"] as const;
+export type SampleSource = (typeof SAMPLE_SOURCES)[number];
+
+/** 見本の元ネタ。省略時は既定の "map"（後方互換：既存の呼び出し元は指定しない）。 */
+export function validateSampleSource(value: unknown): SampleSource {
+  if (value === undefined || value === null || value === "") return "map";
+  if (!SAMPLE_SOURCES.includes(value as SampleSource)) {
+    throw new ValidationError("sampleSource is invalid");
+  }
+  return value as SampleSource;
+}
+
 export class ValidationError extends Error {
   constructor(message: string) {
     super(message);

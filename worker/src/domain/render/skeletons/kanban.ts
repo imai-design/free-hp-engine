@@ -1,4 +1,4 @@
-import { footerHtml, renderActionLinks, renderMenuItems, SAMPLE_NOTICE_HTML } from "../parts.ts";
+import { footerHtml, renderActionLinks, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
 
 /*
@@ -237,7 +237,7 @@ function contactSection(ctx: SkeletonContext): string {
 function body(ctx: SkeletonContext): string {
   const tagline = ctx.tagline ? `<p class="tagline">${ctx.tagline}</p>` : "";
   const lead = ctx.lead ? `<p class="hero__lead">${ctx.lead}</p>` : "";
-  const sampleNotice = ctx.isSample ? `<p class="sample-notice">${SAMPLE_NOTICE_HTML}</p>` : "";
+  const sampleNotice = ctx.isSample ? `<p class="sample-notice">${ctx.sampleNoticeHtml}</p>` : "";
   const photo = ctx.photo
     ? `<figure class="photo"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`
     : "";

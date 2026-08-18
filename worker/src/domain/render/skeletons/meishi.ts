@@ -1,4 +1,4 @@
-import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems, SAMPLE_NOTICE_HTML } from "../parts.ts";
+import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
 
 // 既存5配色の固定トークン。新テーマは骨格を保ったまま、必要な地色・文字色だけ上書きする。
@@ -174,7 +174,7 @@ function body(ctx: SkeletonContext): string {
   const spine = ctx.word ? `<span class="spine industry">${ctx.word}</span>` : "";
   const place = ctx.areaFull ? `<p class="meishi__place">${ctx.areaFull}</p>` : "";
   const tagline = ctx.tagline ? `<p class="tagline meishi__catch">${ctx.tagline}</p>` : "";
-  const sampleNotice = ctx.isSample ? `<p class="sample-notice">${SAMPLE_NOTICE_HTML}</p>` : "";
+  const sampleNotice = ctx.isSample ? `<p class="sample-notice">${ctx.sampleNoticeHtml}</p>` : "";
   const photo = ctx.photo
     ? `<figure class="print"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`
     : "";

@@ -1,4 +1,4 @@
-import { footerHtml, renderActionLinks, renderMenuItems, SAMPLE_NOTICE_HTML } from "../parts.ts";
+import { footerHtml, renderActionLinks, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
 
 const FIXED = {
@@ -190,7 +190,7 @@ function body(ctx: SkeletonContext): string {
   const fudaRow = industryFuda || areaFuda ? `<div class="fuda-row">${industryFuda}${areaFuda}</div>` : "";
   const initial = ctx.initial ? `<span class="in" aria-hidden="true">${ctx.initial}</span>` : "";
   const tagline = ctx.tagline ? `<p class="tagline">${ctx.tagline}</p>` : "";
-  const hikae = ctx.isSample ? `<p class="hikae">${SAMPLE_NOTICE_HTML}</p>` : "";
+  const hikae = ctx.isSample ? `<p class="hikae">${ctx.sampleNoticeHtml}</p>` : "";
   const lead = ctx.lead ? `<p class="lead">${ctx.lead}</p>` : "";
   const photo = ctx.photo
     ? `<figure class="photo"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`

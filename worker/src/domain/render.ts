@@ -2,7 +2,7 @@ import type { GeneratedContent } from "../generation/provider.ts";
 import { buildSkeletonContext, escapeHtml, resolvePhotoFrame } from "./render/parts.ts";
 import { selectPalette, selectSkeleton } from "./render/select.ts";
 import type { SkeletonKey } from "./render/types.ts";
-import type { SiteInput } from "./validate.ts";
+import type { SampleSource, SiteInput } from "./validate.ts";
 
 const META_DESCRIPTION_MAX_LENGTH = 120;
 const SITE_NAME = "AIホームページ製作所（RYOSEIWORLD）";
@@ -23,6 +23,11 @@ export interface RenderSiteOptions {
    * 確かめていない事実を書いてしまうため。断らずに出すと、お店について嘘を書くことになる。
    */
   sample?: boolean;
+  /**
+   * 見本の元ネタ。sample:true のときだけ意味を持ち、断り書きの文言を変える。
+   * 省略時は "map"（後方互換：既存の呼び出し元は指定しない）。
+   */
+  sampleSource?: SampleSource;
   /** 骨格を固定する。テストと、営業で見せ分けたいときだけ使う。 */
   skeleton?: SkeletonKey;
 }
@@ -53,9 +58,10 @@ function faviconDataUri(initial: string | null, mark: string): string {
  */
 export function renderSite(input: SiteInput, content: GeneratedContent, options: RenderSiteOptions = {}): string {
   const isSample = options.sample ?? false;
+  const sampleSource = options.sampleSource ?? "map";
   const skeleton = selectSkeleton(input, options.skeleton);
   const palette = selectPalette(skeleton, input, isSample);
-  const ctx = buildSkeletonContext(input, content, skeleton, palette, options.photoUrl, isSample);
+  const ctx = buildSkeletonContext(input, content, skeleton, palette, options.photoUrl, isSample, sampleSource);
   const frame = resolvePhotoFrame(input);
 
   const metaDescription = text(truncateText(input.description || input.catchphrase, META_DESCRIPTION_MAX_LENGTH));

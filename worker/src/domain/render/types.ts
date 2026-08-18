@@ -1,4 +1,6 @@
-import type { Industry } from "../validate.ts";
+import type { Industry, SampleSource } from "../validate.ts";
+
+export type { SampleSource };
 
 export type SkeletonKey = "名刺" | "暖簾" | "短冊" | "方眼" | "看板";
 export type Temperature = "warm" | "calm" | "fresh" | "lively" | "moody";
@@ -88,6 +90,8 @@ export interface SkeletonContext {
   readonly actions: readonly ActionLink[];
   readonly photo: PhotoInfo | null;
   readonly isSample: boolean;
+  /** 見本ページ下部の断り書き（sampleNoticeOf由来）。isSampleがfalseなら ""。 */
+  readonly sampleNoticeHtml: string;
   readonly palette: Palette;
 }
 

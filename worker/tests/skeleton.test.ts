@@ -195,6 +195,17 @@ test("5骨格とも、写真あり/なし・住所なし・店名40文字・店�
   }
 });
 
+test("見本の断り書きはsampleSourceで文言が変わる（5骨格すべて・threadsは地図由来の文言を含まない）", () => {
+  for (const { skeleton, industry } of SKELETON_CASES) {
+    const input = baseInput({ industry });
+    const mapHtml = renderSite(input, baseContent, { skeleton, sample: true });
+    const threadsHtml = renderSite(input, baseContent, { skeleton, sample: true, sampleSource: "threads" });
+    assert.ok(mapHtml.includes("地図サービスの公開情報"), `${skeleton}: 既定(map)の断り書きが出ていない`);
+    assert.ok(threadsHtml.includes("Threadsでのご投稿を拝見して"), `${skeleton}: threadsの断り書きが出ていない`);
+    assert.ok(!threadsHtml.includes("地図サービスの公開情報"), `${skeleton}: threadsなのに地図由来の文言が残っている`);
+  }
+});
+
 // ---- ④ 看板固有: 必須情報・機能・対応業種・5テーマ・写真3形状 ----
 
 test("看板は店名・キャッチ・連絡先・メニュー・行動ボタン・フッターをすべて表示し、同じ入力から同じHTMLを返す", () => {
