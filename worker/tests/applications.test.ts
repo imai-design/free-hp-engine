@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { D1Database, D1PreparedStatement, ApplicationRow } from "../src/domain/applications.ts";
-import { hashIp, toCsv } from "../src/domain/applications.ts";
+import { hashIp, recordApplication, toCsv } from "../src/domain/applications.ts";
 import { handleRequest } from "../src/index.ts";
 
 class MemoryKv {
@@ -27,7 +27,11 @@ class MemoryKv {
   }
 }
 
-/** applications.ts が要求する最小限のD1インターフェースだけを実装するモック。実DBは呼ばない。 */
+/**
+ * applications.ts / adminRateLimit.ts が要求する最小限のD1インターフェースだけを実装するモック。実DBは呼ばない。
+ * admin_attempts向けのINSERT/COUNTだけはSQL文字列で見分けて別配列で扱う（他のINSERTと混ざらないように）。
+ * 実際のSQLite制約（UNIQUE等）そのものはここでは検証しない＝tests/dbConstraints.test.ts が実DB(node:sqlite)で担当する。
+ */
 class MockStatement implements D1PreparedStatement {
   db: MockD1;
   sql: string;
@@ -45,12 +49,22 @@ class MockStatement implements D1PreparedStatement {
 
   async run(): Promise<unknown> {
     if (this.db.failInsert) throw new Error("mock insert failure");
+    if (/INSERT INTO admin_attempts/u.test(this.sql)) {
+      const [ipHash, ts] = this.values as [string, number];
+      this.db.adminAttempts.push({ ipHash, ts });
+      return {};
+    }
     this.db.inserted.push({ sql: this.sql, values: this.values });
     return {};
   }
 
   async all<T = Record<string, unknown>>(): Promise<{ results: T[] }> {
     if (this.db.failQuery) throw new Error("mock query failure");
+    if (/FROM admin_attempts/u.test(this.sql)) {
+      const [ipHash, windowStartMs] = this.values as [string, number];
+      const count = this.db.adminAttempts.filter((attempt) => attempt.ipHash === ipHash && attempt.ts >= windowStartMs).length;
+      return { results: [{ count }] as unknown as T[] };
+    }
     return { results: this.db.rows as unknown as T[] };
   }
 }
@@ -58,6 +72,7 @@ class MockStatement implements D1PreparedStatement {
 class MockD1 implements D1Database {
   inserted: Array<{ sql: string; values: unknown[] }> = [];
   rows: ApplicationRow[] = [];
+  adminAttempts: Array<{ ipHash: string; ts: number }> = [];
   failInsert = false;
   failQuery = false;
 
@@ -208,6 +223,8 @@ test("admin: 既定でCSV(UTF-8 BOM・日本語ヘッダー)を返す", async ()
     has_photo: 0,
     owner_email: "taro@example.com",
     partner_key: null,
+    partner_key_hash: null,
+    extra_json: null,
     note: null,
   }];
   const response = await handleRequest(adminRequest("?key=correct-key"), baseEnv({ DB: db, ADMIN_KEY: "correct-key" }));
@@ -245,6 +262,65 @@ test("admin: 鍵の総当たりは同一IPからのレート制限で頭打ち�
   assert.equal(lastResponse?.status, 429);
 });
 
+test("admin: Authorization: Bearer ヘッダーが正式な渡し方で、非推奨警告は付かない", async () => {
+  const db = new MockD1();
+  const request = new Request(`https://free-hp-engine.example.workers.dev/api/admin/applications?format=json`, {
+    headers: { authorization: "Bearer correct-key" },
+  });
+  const response = await handleRequest(request, baseEnv({ DB: db, ADMIN_KEY: "correct-key" }));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-deprecated-auth"), null);
+});
+
+test("admin: ?key= でも従来どおり動くが、後方互換の警告ヘッダーX-Deprecated-Authが付く", async () => {
+  const db = new MockD1();
+  const response = await handleRequest(adminRequest("?key=correct-key&format=json"), baseEnv({ DB: db, ADMIN_KEY: "correct-key" }));
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("x-deprecated-auth"), "query");
+});
+
+test("admin: Authorizationヘッダーと?key=の両方があればヘッダーを優先する", async () => {
+  const db = new MockD1();
+  const request = new Request(`https://free-hp-engine.example.workers.dev/api/admin/applications?key=wrong&format=json`, {
+    headers: { authorization: "Bearer correct-key" },
+  });
+  const response = await handleRequest(request, baseEnv({ DB: db, ADMIN_KEY: "correct-key" }));
+  assert.equal(response.status, 200, "?keyが間違っていてもAuthorizationヘッダーが正しければ通る");
+  assert.equal(response.headers.get("x-deprecated-auth"), null);
+});
+
+test("admin: failed=1 でD1保存に失敗しKVへ退避した申込の件数だけを返す(内容は返さない)", async () => {
+  const store = new MemoryKv();
+  await store.put("dbfail:2026-08-18T00:00:00.000Z:slug-a", JSON.stringify({ storeName: "非公開の店名" }));
+  await store.put("dbfail:2026-08-18T00:01:00.000Z:slug-b", JSON.stringify({ storeName: "もう1件" }));
+  const response = await handleRequest(
+    adminRequest("?key=correct-key&failed=1"),
+    baseEnv({ SITES: store, DB: new MockD1(), ADMIN_KEY: "correct-key" }),
+  );
+  assert.equal(response.status, 200);
+  const result = await response.json() as { failedCount: number };
+  assert.equal(result.failedCount, 2);
+  const text = JSON.stringify(result);
+  assert.doesNotMatch(text, /非公開の店名/u, "件数のみでPIIそのものは含めない");
+});
+
+test("recordApplication: D1への保存が失敗したら、内容をKVへ dbfail: プレフィックスで退避する", async () => {
+  const store = new MemoryKv();
+  const db = new MockD1();
+  db.failInsert = true;
+  const ok = await recordApplication(
+    db,
+    { createdAt: "2026-08-18T00:00:00.000Z", kind: "site", slug: "failed-slug", storeName: "退避されるべき店", hasPhoto: false },
+    store,
+  );
+  assert.equal(ok, false);
+  const keys = [...store.values.keys()].filter((key) => key.startsWith("dbfail:"));
+  assert.equal(keys.length, 1);
+  assert.match(keys[0], /^dbfail:2026-08-18T00:00:00\.000Z:failed-slug$/u);
+  const saved = JSON.parse(store.values.get(keys[0]) ?? "{}") as { storeName?: string };
+  assert.equal(saved.storeName, "退避されるべき店");
+});
+
 test("toCsv: カンマ・改行・ダブルクォートを含む値はRFC4180形式でクォートする", () => {
   const csv = toCsv([{
     id: 1,
@@ -268,6 +344,8 @@ test("toCsv: カンマ・改行・ダブルクォートを含む値はRFC4180形
     has_photo: 1,
     owner_email: null,
     partner_key: null,
+    partner_key_hash: null,
+    extra_json: null,
     note: null,
   }]);
   assert.match(csv, /"店名,""かえる""\n2号店"/u);
@@ -297,6 +375,8 @@ test("toCsv: 先頭が = + - @ タブの値はExcelで数式として実行さ�
     has_photo: 0,
     owner_email: null,
     partner_key: null,
+    partner_key_hash: null,
+    extra_json: null,
     note: null,
   };
   // ("@SUM(1,1)"のようにカンマを含む値はRFC4180クォートの区切りと混ざるため、ここではカンマを含まない値だけで検証する。

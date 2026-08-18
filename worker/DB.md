@@ -6,16 +6,19 @@
 
 ## 一覧の見方（いちばん簡単な方法）
 
-ブラウザのアドレスバーに、次のURLを開くだけでCSVがダウンロードされる（鍵は `~/.freehp-admin-key` の中身）。
+**正式な使い方**は `Authorization: Bearer <鍵>` ヘッダーを付けてアクセスする（鍵は `~/.freehp-admin-key` の中身）。
 
-```
-https://free-hp-engine.ryoseiworld.workers.dev/api/admin/applications?key=（~/.freehp-admin-keyの中身）&format=csv
+```bash
+curl -H "Authorization: Bearer $(cat ~/.freehp-admin-key)" \
+  "https://free-hp-engine.ryoseiworld.workers.dev/api/admin/applications?format=csv" \
+  -o applications.csv
 ```
 
 - ダウンロードした `applications.csv` をダブルクリックすれば Excel か Numbers で開く（先頭にUTF-8のBOMを付けているので文字化けしない）。
 - 直近分だけ見たいときは `&since=2026-08-01` のように日付を足す（その日の0時(UTC)以降だけに絞られる）。
 - JSONで受け取りたいときは `&format=json` を付ける（プログラムから読むとき用）。
 - 1回のリクエストで最新2,000件まで（created_at の新しい順）。
+- D1保存に失敗し、あとで拾えるようKVへ退避された件数だけを見たいときは `&failed=1`（内容そのものは返らない。件数だけ）。
 
 鍵は `~/.freehp-admin-key` に入っている。中身をコピーして使う。
 
@@ -23,7 +26,13 @@ https://free-hp-engine.ryoseiworld.workers.dev/api/admin/applications?key=（~/.
 cat ~/.freehp-admin-key
 ```
 
-同じIPから短時間に何度も試すと（1時間に5回まで）一時的に弾かれる（鍵の総当たり対策）。それ以上は待つしかない。
+同じIPから短時間に何度も試すと（1時間に5回まで）一時的に弾かれる（鍵の総当たり対策。2026-08-18からD1ベースのカウンタに変更し、KVのget→putより並列試行に強くなった）。それ以上は待つしかない。
+
+**旧方式（`?key=（鍵）` をブラウザのアドレスバーに直接入れる方式）は2026-09-17まで後方互換で動く。**
+それ以降は `?key=` を付けても認証されなくなる（鍵不一致と同じ401になる。経路自体は隠さない）。
+`?key=` を使うとレスポンスに `X-Deprecated-Auth: query` ヘッダーが付く（curlで `-i` を付ければ確認できる）。
+アクセスログやブラウザ履歴に鍵が残るのが理由なので、ブックマーク等に `?key=...` を保存している場合は
+上記のcurlコマンド（またはPostman等でヘッダーを付けられるツール）に切り替える。
 
 ## 鍵の場所
 
@@ -43,15 +52,23 @@ npx wrangler deploy
 
 ## テーブル定義
 
-`migrations/0001_applications.sql`。主な列:
+`migrations/0001_applications.sql`〜`0004_partner_key_hash.sql`。主な列:
 
 - `kind`: `site`（申込フォームからの本番サイト生成）／ `sample`（営業用見本・90日で自動失効）／ `domain_request`（独自ドメイン取得申込）
 - 店舗情報: `store_name` `business_type` `description` `catchcopy` `mood` `phone` `address` `hours` `menu_text` `reserve_url` `instagram` `line_official` `has_photo`
 - 申込者: `owner_email` `owner_sub`（Googleログイン時のみ）
 - 送信元: `ip_hash`（生IPは保存しない。SHA-256先頭16桁）`user_agent`
-- `partner_key`: 紹介パートナー経由の見本生成なら入る
+- `partner_key`: 過去データ参照用に列だけ残しているが、2026-08-18以降は常にNULL（下記参照）
+- `partner_key_hash`: 紹介パートナーの鍵をSHA-256先頭16桁でハッシュ化したもの。2026-08-18以降はこちらに入る
+  （生の鍵をCSV/管理画面にそのまま出すと、CSV流出が`/api/sample`の生成権限の流出に直結するため）
 - `extra_json`: `domain_request` の追加情報（希望ドメイン・可用性・見積等）をJSON文字列で保持
 - `status` / `note`: 今のところ既定値のまま（あとから手で更新する用の余地）
+
+`slug`のUNIQUE制約は「全種別で一意」ではなく「同じ`kind`内でのみ一意」（`migrations/0002_slug_unique_per_kind.sql`）。
+同じ店（同じslug）が site→domain_request の順で申し込んでも衝突しない。
+
+`admin_attempts`テーブル（`migrations/0003_admin_attempts.sql`）は管理エンドポイントの鍵総当たり対策専用で、
+`applications`とは別。`ip_hash`と`ts`（ミリ秒）だけを持ち、古い行を消す仕組みはまだ無い（増え続ける）。
 
 ## データの入り方
 
@@ -59,7 +76,11 @@ npx wrangler deploy
 それぞれ成功したタイミングで `recordApplication()`（`src/domain/applications.ts`）を呼んでINSERTする。
 
 **D1への書き込みが失敗しても、申込フォーム側の処理（サイト生成そのもの）は成功として扱う**（`try/catch` で握りつぶし、
-`console.error` にだけ残す）。D1が落ちていても訪問者には影響しない設計。
+`console.error` に残す）。D1が落ちていても訪問者には影響しない設計。ただし2026-08-18以降は、失敗した申込内容を
+KV（`SITES`）へ `dbfail:<作成日時ISO>:<slug>` というキーで30日間退避するようになった（`recordApplication`の第3引数）。
+`/api/admin/applications?failed=1`（Authorizationヘッダー付き）で退避件数だけを確認できる。件数以上の詳細（店名・連絡先等）
+が必要なときは `wrangler kv key list --prefix dbfail: --remote` → `wrangler kv key get <キー> --remote` で個別に読み、
+内容を確認したうえで手動で`applications`へ`INSERT`し直す（自動復旧の仕組みはまだ無い）。
 
 ## 既存データの取り込み（バックフィル）
 

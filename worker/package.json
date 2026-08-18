@@ -3,7 +3,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test": "node --experimental-strip-types --test",
+    "test": "node --experimental-strip-types --experimental-sqlite --test",
     "check": "tsc --noEmit",
     "dev": "wrangler dev"
   },

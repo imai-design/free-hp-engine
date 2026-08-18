@@ -9,7 +9,8 @@ import { consumeDailyQuota, DAILY_SITES_PER_USER, nextAiQuotaReset, tokyoDateKey
 import { checkDomainAvailability, type AvailabilityStatus, type FetchImpl } from "./domain/domainAvailability.ts";
 import { quoteDomains } from "./domain/domainPricing.ts";
 import { validateDomainRequest, type DomainRequestInput, type DomainRequestMethod } from "./domain/validateDomainRequest.ts";
-import { listApplications, recordApplication, toCsv, type D1Database } from "./domain/applications.ts";
+import { countFailedApplications, hashIp, listApplications, recordApplication, toCsv, type D1Database } from "./domain/applications.ts";
+import { enforceAdminRateLimit } from "./domain/adminRateLimit.ts";
 
 interface KvListResult {
   keys: Array<{ name: string }>;
@@ -33,7 +34,11 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   /** 申込情報（applications テーブル）を持つD1。未設定（ローカル・テスト）でも申込処理自体は止めない。 */
   DB?: D1Database;
-  /** 管理用一覧・CSVエクスポート（/api/admin/applications）の鍵。未設定ならその経路は隠したまま。 */
+  /**
+   * 管理用一覧・CSVエクスポート（/api/admin/applications）の鍵。未設定ならその経路は隠したまま。
+   * 正式な渡し方は `Authorization: Bearer <key>` ヘッダー。クエリパラメータ `?key=` は
+   * 2026-09-17まで（追加から30日間）だけ後方互換で受け付ける（DB.md参照）。
+   */
   ADMIN_KEY?: string;
 }
 
@@ -215,7 +220,8 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
         { expirationTtl: 60 * 60 * 24 * 400 },
       );
     }
-    // 申込内容の記録。失敗してもここまでの生成・公開は成功しているのでレスポンスは変えない。
+    // 申込内容の記録。失敗してもここまでの生成・公開は成功しているのでレスポンスは変えない
+    // （失敗時はenv.SITESへ内容を退避する。recordApplication内部の仕組み）。
     await recordApplication(env.DB, {
       createdAt: new Date(context.now?.() ?? Date.now()).toISOString(),
       kind: "site",
@@ -238,7 +244,7 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
       ownerSub: user?.sub,
       ip: request.headers.get("CF-Connecting-IP") ?? undefined,
       userAgent: request.headers.get("user-agent") ?? undefined,
-    });
+    }, env.SITES);
   } catch {
     return json({ error: "公開処理に失敗しました。もう一度お試しください。" }, 503);
   }
@@ -250,8 +256,13 @@ interface SamplePartner {
   name: string;
 }
 
+// 想定する鍵の長さを大きく超える入力は比較に入る前に弾く（走査量が入力長に比例して増える一種の
+// リソース濫用への歯止め。厳密なconstant-time比較の代替ではなく、あくまで異常に長い入力への防御）。
+const MAX_COMPARE_LENGTH = 64;
+
 /** 長さが違っても長い方の末尾まで必ず走査する。 */
 function fullScanEqual(actual: string | null, expected: string): boolean {
+  if (actual !== null && actual.length > MAX_COMPARE_LENGTH) return false;
   let mismatch = actual === null ? 1 : actual.length ^ expected.length;
   const actualLength = actual?.length ?? 0;
   for (let index = 0; index < Math.max(actualLength, expected.length); index += 1) {
@@ -386,7 +397,7 @@ async function handleDomainRequest(request: Request, env: Env, context: RequestC
     userAgent: request.headers.get("user-agent") ?? undefined,
     note: input.note,
     extra: { id, domains: input.domains, contactName: input.contactName, method: input.method, availability, quote },
-  });
+  }, env.SITES);
 
   return json({
     id,
@@ -429,19 +440,47 @@ async function handleDomainRequests(request: Request, env: Env): Promise<Respons
   }
 }
 
+// クエリパラメータ`?key=`での認証は、Authorizationヘッダーへの移行期間として
+// この日時までだけ後方互換で受け付ける（2026-08-18の追加から30日間）。
+const ADMIN_QUERY_KEY_DEPRECATION_DEADLINE = Date.parse("2026-09-17T00:00:00Z");
+
+interface ExtractedAdminKey {
+  key: string | null;
+  /** ?key= のほうで認証した（＝非推奨経路を使った）かどうか。レスポンスに警告ヘッダーを足すために使う。 */
+  deprecatedQuery: boolean;
+}
+
+/**
+ * 管理鍵は `Authorization: Bearer <key>` ヘッダーが正。
+ * `?key=` はアクセスログ・ブラウザ履歴に残るため、移行期間(ADMIN_QUERY_KEY_DEPRECATION_DEADLINEまで)だけ
+ * 後方互換で受け付ける。期限を過ぎたら`?key=`は無視し（鍵不一致と同じ401になる）、経路自体は隠さない。
+ */
+function extractAdminKey(request: Request, url: URL, now: number): ExtractedAdminKey {
+  const bearerMatch = request.headers.get("authorization")?.match(/^Bearer\s+(.+)$/u);
+  if (bearerMatch) return { key: bearerMatch[1], deprecatedQuery: false };
+  const queryKey = url.searchParams.get("key");
+  if (queryKey !== null && now < ADMIN_QUERY_KEY_DEPRECATION_DEADLINE) {
+    return { key: queryKey, deprecatedQuery: true };
+  }
+  return { key: null, deprecatedQuery: false };
+}
+
 /**
  * 申込情報（applications テーブル）の管理用一覧・CSVエクスポート。
- * ADMIN_KEY未設定なら経路の存在自体を隠す（handleDomainRequests等と違い、こちらはクエリパラメータで鍵を渡す
- * ＝ブラウザでURLを直接開いてCSVをダウンロードする使い方を想定しているため）。
+ * ADMIN_KEY未設定なら経路の存在自体を隠す。
  */
 async function handleAdminApplications(request: Request, env: Env, context: RequestContext): Promise<Response> {
   if (!env.ADMIN_KEY) return json({ error: "not found" }, 404);
+  // レート制限・失敗集計のどちらもD1(env.DB)を使うため、鍵チェックより前にDBの有無を確認する。
+  if (!env.DB) return json({ error: "database is unavailable" }, 503);
 
-  // 鍵はクエリパラメータで渡す（ブラウザでURLを直接開いてCSVをダウンロードする使い方を想定）。
-  // その分アクセスログやブラウザ履歴に残りやすいので、他の経路より鍵を長く複雑にして運用する前提。
-  // 加えて、鍵の総当たりを本文を読む前に頭打ちにする（/api/domain-requestと同じ考え方）。
+  const now = context.now?.() ?? Date.now();
+
+  // 鍵の総当たりを、鍵の一致確認より前に頭打ちにする（不正な鍵でも予算を消費させるため）。
+  // KVのget→put(非原子的)ではなくD1のINSERT→COUNTを使う（src/domain/adminRateLimit.ts参照）。
   try {
-    await enforceRateLimit(env.SITES, request.headers.get("CF-Connecting-IP") ?? "unknown", context.now?.() ?? Date.now());
+    const ipHash = await hashIp(request.headers.get("CF-Connecting-IP") ?? "unknown");
+    await enforceAdminRateLimit(env.DB, ipHash, now);
   } catch (error) {
     if (error instanceof RateLimitError) {
       return json({ error: "試行回数の上限に達しました。1時間後にもう一度お試しください。" }, 429, { "retry-after": String(error.retryAfter) });
@@ -450,15 +489,21 @@ async function handleAdminApplications(request: Request, env: Env, context: Requ
   }
 
   const url = new URL(request.url);
-  const key = url.searchParams.get("key");
-  if (!fullScanEqual(key, env.ADMIN_KEY)) return json({ error: "unauthorized" }, 401);
-  if (!env.DB) return json({ error: "database is unavailable" }, 503);
+  const { key, deprecatedQuery } = extractAdminKey(request, url, now);
+  const extraHeaders: HeadersInit = deprecatedQuery ? { "x-deprecated-auth": "query" } : {};
+  if (!fullScanEqual(key, env.ADMIN_KEY)) return json({ error: "unauthorized" }, 401, extraHeaders);
+
+  // D1保存に失敗した申込がKVへ何件退避されているかだけを返す（内容そのものは返さない）。
+  if (url.searchParams.get("failed") === "1") {
+    const failedCount = await countFailedApplications(env.SITES);
+    return json({ failedCount }, 200, { "cache-control": "no-store", ...extraHeaders });
+  }
 
   const sinceValue = url.searchParams.get("since");
   let sinceIso: string | null = null;
   if (sinceValue !== null && sinceValue.trim()) {
     const parsed = Date.parse(sinceValue);
-    if (!Number.isFinite(parsed)) return json({ error: "since must be a valid date (YYYY-MM-DD)" }, 422);
+    if (!Number.isFinite(parsed)) return json({ error: "since must be a valid date (YYYY-MM-DD)" }, 422, extraHeaders);
     sinceIso = new Date(parsed).toISOString();
   }
 
@@ -466,11 +511,11 @@ async function handleAdminApplications(request: Request, env: Env, context: Requ
   try {
     rows = await listApplications(env.DB, sinceIso);
   } catch {
-    return json({ error: "申込情報を取得できませんでした。" }, 503);
+    return json({ error: "申込情報を取得できませんでした。" }, 503, extraHeaders);
   }
 
   // 個人情報を含むレスポンスなので、共有キャッシュ・ブラウザキャッシュのどちらにも残さない。
-  if (url.searchParams.get("format") === "json") return json({ items: rows }, 200, { "cache-control": "no-store" });
+  if (url.searchParams.get("format") === "json") return json({ items: rows }, 200, { "cache-control": "no-store", ...extraHeaders });
 
   // 既定はCSV。ExcelやNumbersで開いても文字化けしないよう先頭にUTF-8のBOM(U+FEFF)を付ける。
   return new Response("\uFEFF" + toCsv(rows), {
@@ -479,6 +524,7 @@ async function handleAdminApplications(request: Request, env: Env, context: Requ
       "content-type": "text/csv; charset=utf-8",
       "content-disposition": 'attachment; filename="applications.csv"',
       "cache-control": "no-store",
+      ...extraHeaders,
     },
   });
 }
@@ -568,7 +614,7 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
       partnerKey: partner?.key,
       ip: request.headers.get("CF-Connecting-IP") ?? undefined,
       userAgent: request.headers.get("user-agent") ?? undefined,
-    });
+    }, env.SITES);
     return json({ url: publicUrl, slug });
   } catch {
     return json({ error: "公開処理に失敗しました。" }, 503);
