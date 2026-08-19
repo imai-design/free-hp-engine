@@ -4,7 +4,7 @@ import type { GeneratedContent } from "../src/generation/provider.ts";
 import { renderSite } from "../src/domain/render.ts";
 import { buildSkeletonContext, dyedTextOf, nameMaxRemOf, resolveHeadlineWord, shouldDropHeadlineWord } from "../src/domain/render/parts.ts";
 import { selectPalette, selectSkeleton } from "../src/domain/render/select.ts";
-import { KANBAN, SKELETONS } from "../src/domain/render/skeletons/index.ts";
+import { KANBAN, SKELETONS, TANZAKU } from "../src/domain/render/skeletons/index.ts";
 import type { SkeletonKey, Temperature } from "../src/domain/render/types.ts";
 import { COLOR_THEMES, INDUSTRIES, validateInput, type ColorTheme, type Industry, type SiteInput } from "../src/domain/validate.ts";
 
@@ -601,6 +601,90 @@ test("看板: 「◯◯、はじめます。」は実在の店名（老舗にも
     if (ctx.headline.includes("はじめます")) sawKaiten = true;
   }
   assert.ok(sawKaiten, "見本の仮店名（あなたの〜）では「はじめます」型が候補から完全に消えている（落としすぎ）");
+});
+
+// ---- ⑦ VenueKindがshop以外（office/company/clinic）のとき、見出しに業種語を使わない
+//     （実例: https://free-hp-engine.ryoseiworld.workers.dev/ の士業見本でh1が
+//      「事務所、行政書士法人ドラゴンオフィス。」「事務所、税理士法人タックス・ワン。」に
+//      なっていた不具合の修正。名称に「事務所」を含まない法人名だと接頭語として付いてしまっていた） ----
+
+test("office/company/clinicでは見出し(h1相当)に業種語が接頭で付かず、名称主体になる", () => {
+  const NON_SHOP_CASES = [
+    { industry: "士業・専門サービス", storeName: "税理士法人タックス・ワン", droppedWord: "事務所" },
+    { industry: "士業・専門サービス", storeName: "行政書士法人ドラゴンオフィス", droppedWord: "事務所" },
+    { industry: "不動産・建設", storeName: "株式会社レスト", droppedWord: "会社" },
+    { industry: "医療・クリニック", storeName: "医療法人あおぞら", droppedWord: "医院" },
+  ] as const satisfies readonly { industry: Industry; storeName: string; droppedWord: string }[];
+
+  for (const skeleton of SKELETONS) {
+    for (const { industry, storeName, droppedWord } of NON_SHOP_CASES) {
+      if (!skeleton.industries.includes(industry)) continue;
+      for (let i = 0; i < 20; i += 1) {
+        const input = baseInput({
+          industry,
+          storeName,
+          address: i % 2 === 0 ? undefined : `東京都新宿区西新宿${i}-1-1`,
+        });
+        const palette = selectPalette(skeleton, input, false);
+        const ctx = buildSkeletonContext(input, baseContent, skeleton, palette, undefined, false);
+        assert.ok(
+          !ctx.headline.includes(`${droppedWord}、`),
+          `${skeleton.key}/${industry}/${storeName}(i=${i}): 見出しに「${droppedWord}、」が付いた → "${ctx.headline}"`,
+        );
+        assert.ok(
+          ctx.headline.includes(storeName),
+          `${skeleton.key}/${industry}/${storeName}(i=${i}): 見出しに店名が含まれない → "${ctx.headline}"`,
+        );
+      }
+    }
+  }
+});
+
+test("店名に「事務所」を含む場合（例: 乾行政書士事務所）は、見出しが店名だけの型になる（従来どおり）", () => {
+  for (const skeleton of SKELETONS) {
+    if (!skeleton.industries.includes("士業・専門サービス")) continue;
+    for (let i = 0; i < 10; i += 1) {
+      const input = baseInput({
+        industry: "士業・専門サービス",
+        storeName: "乾行政書士事務所",
+        address: i % 2 === 0 ? undefined : `東京都新宿区西新宿${i}-1-1`,
+      });
+      const palette = selectPalette(skeleton, input, false);
+      const ctx = buildSkeletonContext(input, baseContent, skeleton, palette, undefined, false);
+      assert.ok(!ctx.headline.includes("事務所、"), `${skeleton.key}(i=${i}): 見出しに「事務所、」が付いた → "${ctx.headline}"`);
+      assert.ok(ctx.headline.includes("乾行政書士事務所"), `${skeleton.key}(i=${i}): 見出しに店名が含まれない → "${ctx.headline}"`);
+    }
+  }
+});
+
+// ---- ⑧ office/company/clinicの業種バッジ（class="industry"）は審査カテゴリ名でなく名称由来の職種語 ----
+
+test("業種バッジ(ctx.word)はoffice/company/clinicで名称由来の職種語になり、審査カテゴリ名のままにならない", () => {
+  const officeInput = baseInput({ industry: "士業・専門サービス", storeName: "税理士法人タックス・ワン" });
+  const officeCtx = buildSkeletonContext(officeInput, baseContent, TANZAKU, selectPalette(TANZAKU, officeInput, false), undefined, false);
+  assert.equal(officeCtx.word, "税理士", "officeのバッジ語が名称由来の職種語になっていない");
+
+  const companyInput = baseInput({ industry: "不動産・建設", storeName: "株式会社Reliable不動産" });
+  const companyCtx = buildSkeletonContext(companyInput, baseContent, TANZAKU, selectPalette(TANZAKU, companyInput, false), undefined, false);
+  assert.equal(companyCtx.word, "不動産", "companyのバッジ語が名称由来の職種語になっていない");
+
+  const html = renderSite(officeInput, baseContent, { skeleton: "短冊" });
+  assert.ok(html.includes('<p class="kuni industry">税理士</p>'), "短冊のバッジ要素に「税理士」が出ていない");
+  assert.ok(!html.includes('士業・専門サービス'), "審査カテゴリ名がそのままHTMLに出ている");
+});
+
+test("shop業種（飲食店等）のバッジ語・見出し語は既存仕様のまま変わらない（word=null化・badgeWordForはoffice/company/clinic限定）", () => {
+  const cafeInput = baseInput({
+    industry: "飲食店",
+    storeName: "麦の香珈琲",
+    catchphrase: "東京都武蔵野市のカフェ", // parseGenreでジャンル語「カフェ」を拾わせる（住所は既定のbaseInputのまま）
+  });
+  const cafeCtx = buildSkeletonContext(cafeInput, baseContent, TANZAKU, selectPalette(TANZAKU, cafeInput, false), undefined, false);
+  assert.equal(cafeCtx.word, "カフェ", "shopのバッジ語はジャンル語優先の従来仕様のまま");
+
+  const noGenreInput = baseInput({ industry: "飲食店", storeName: "麦の香" });
+  const noGenreCtx = buildSkeletonContext(noGenreInput, baseContent, TANZAKU, selectPalette(TANZAKU, noGenreInput, false), undefined, false);
+  assert.equal(noGenreCtx.word, "飲食店", "shopのバッジ語のフォールバック（業種ラベル）が従来仕様のまま");
 });
 
 // ---- WCAG AA 4.5:1（自分でも1配色は抜き打ちで検算する。DESIGN_SPEC.md §9-2 その10） ----

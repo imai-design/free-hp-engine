@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import type { GeneratedContent } from "../src/generation/provider.ts";
 import { renderSite } from "../src/domain/render.ts";
+import { resolveVenueKind, venueNoun } from "../src/domain/render/venue.ts";
 import { validateInput, type Industry } from "../src/domain/validate.ts";
 
 const NEW_INDUSTRIES = [
@@ -36,6 +37,12 @@ for (const industry of NEW_INDUSTRIES) {
   test(`render: 新業種「${industry}」をHTMLに表示する`, () => {
     const input = validateInput({ ...baseInput, industry });
     const html = renderSite(input, content);
-    assert.match(html, new RegExp(`class="[^"]*industry"[^>]*>${industry}<`, "u"));
+    // shop（教室・スクール/小売・物販/修理・住まいのサービス）は審査カテゴリ名そのまま。
+    // office/company/clinic（士業・専門サービス/不動産・建設/医療・クリニック）は、
+    // 名称・キャッチコピーに職種語が無いこの入力では venueNoun（事務所/会社/医院）に言い換わる
+    // （2026-08-19: 審査カテゴリ名がバッジに機械的に出ていた不具合の修正）。
+    const venueKind = resolveVenueKind(industry, baseInput.storeName);
+    const expectedBadge = venueKind === "shop" ? industry : venueNoun(venueKind);
+    assert.match(html, new RegExp(`class="[^"]*industry"[^>]*>${expectedBadge}<`, "u"));
   });
 }

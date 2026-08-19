@@ -53,3 +53,38 @@ const NON_SHOP_HEADINGS: Readonly<Record<Exclude<VenueKind, "shop">, VenueHeadin
 export function headingsForVenue(kind: VenueKind, shopHeadings: VenueHeadings): VenueHeadings {
   return kind === "shop" ? shopHeadings : NON_SHOP_HEADINGS[kind];
 }
+
+// ---- 非店舗（office/company/clinic）のバッジ語 ----
+//
+// 業種バッジ（class="industry"）が審査カテゴリ名（例:「士業・専門サービス」）そのままだと
+// 機械的になる（2026-08-19指摘）。名称・キャッチコピーから実際の職種語を拾い、それも
+// 無ければ venueNoun（事務所/会社/医院）にする。判定順は先に当たった語を採用する。
+const OFFICE_BADGE_WORDS = [
+  "行政書士",
+  "税理士",
+  "社会保険労務士",
+  "社労士",
+  "司法書士",
+  "弁護士",
+  "公認会計士",
+  "弁理士",
+  "土地家屋調査士",
+] as const;
+const COMPANY_BADGE_WORDS = ["不動産", "工務店", "リフォーム", "建設", "建築", "ハウス"] as const;
+const CLINIC_BADGE_WORDS = ["クリニック", "歯科", "内科", "皮膚科", "整形外科", "医院"] as const;
+
+const BADGE_WORDS_BY_KIND: Readonly<Record<Exclude<VenueKind, "shop">, readonly string[]>> = {
+  office: OFFICE_BADGE_WORDS,
+  company: COMPANY_BADGE_WORDS,
+  clinic: CLINIC_BADGE_WORDS,
+};
+
+function findBadgeWord(words: readonly string[], text: string): string | null {
+  return words.find((word) => text.includes(word)) ?? null;
+}
+
+/** 名称→キャッチコピー→venueNoun の順で、非店舗のバッジ語（2〜8文字）を決める。 */
+export function badgeWordFor(kind: Exclude<VenueKind, "shop">, storeName: string, catchphrase: string): string {
+  const words = BADGE_WORDS_BY_KIND[kind];
+  return findBadgeWord(words, storeName) ?? findBadgeWord(words, catchphrase) ?? venueNoun(kind);
+}

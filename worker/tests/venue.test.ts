@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { qaContent, sanitizeVenueTerms, VENUE_LANGUAGE_QA_REASON } from "../src/domain/qa.ts";
 import { footerHtml, sampleNoticeOf } from "../src/domain/render/parts.ts";
-import { resolveVenueKind, venueNoun, type VenueKind } from "../src/domain/render/venue.ts";
+import { badgeWordFor, resolveVenueKind, venueNoun, type VenueKind } from "../src/domain/render/venue.ts";
 import {
   buildSystemPrompt,
   generateContentAnthropic,
@@ -58,6 +58,34 @@ test("resolveVenueKindは明示業種を優先し、「その他」だけ名称�
     assert.equal(resolveVenueKind("その他", storeName), expected, storeName);
   }
   assert.equal(resolveVenueKind("その他", "まちの仕事場"), "shop");
+});
+
+test("badgeWordFor: 非店舗（office/company/clinic）のバッジ語は名称→キャッチコピー→venueNounの順で職種語を拾う（審査カテゴリ名の機械的表示を避ける）", () => {
+  assert.equal(badgeWordFor("office", "税理士法人タックス・ワン", ""), "税理士", "名称から税理士を拾えていない");
+  assert.equal(badgeWordFor("office", "行政書士法人ドラゴンオフィス", ""), "行政書士", "名称から行政書士を拾えていない");
+  assert.equal(badgeWordFor("company", "株式会社Reliable不動産", ""), "不動産", "名称から不動産を拾えていない");
+  assert.equal(
+    badgeWordFor("company", "株式会社レスト", "新宿区の不動産会社"),
+    "不動産",
+    "名称に無ければキャッチコピーから不動産を拾えていない",
+  );
+  assert.equal(
+    badgeWordFor("company", "株式会社ABC", "杉並区の会社"),
+    "会社",
+    "名称にもキャッチコピーにも無ければvenueNoun（会社）にフォールバックしていない",
+  );
+  assert.equal(badgeWordFor("clinic", "青空歯科クリニック", ""), "クリニック", "語群の並び順（先に当たった語）が違う");
+  assert.equal(badgeWordFor("clinic", "まちの内科", ""), "内科", "名称から内科を拾えていない");
+  assert.equal(badgeWordFor("clinic", "まちの診療所", "地域のかかりつけ医院"), "医院", "キャッチコピーから医院を拾えていない");
+
+  for (const [kind, storeName, catchphrase] of [
+    ["office", "税理士法人タックス・ワン", ""],
+    ["company", "株式会社Reliable不動産", ""],
+    ["clinic", "青空歯科クリニック", ""],
+  ] as const satisfies readonly (readonly [Exclude<VenueKind, "shop">, string, string])[]) {
+    const badge = badgeWordFor(kind, storeName, catchphrase);
+    assert.ok(badge.length >= 2 && badge.length <= 8, `${kind}: バッジ語の文字数が2〜8文字の範囲外 → "${badge}"`);
+  }
 });
 
 test("venueNounは4種類を利用者向けの日本語名詞へ対応させる", () => {

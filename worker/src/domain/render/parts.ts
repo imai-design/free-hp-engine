@@ -4,7 +4,7 @@ import type { Industry, SampleSource, SiteInput } from "../validate.ts";
 import { sampleTtlDays } from "../sample.ts";
 import { pickIndex, seedOf } from "./hash.ts";
 import { buildHeadline } from "./headline.ts";
-import { resolveVenueKind, venueNoun, type VenueKind } from "./venue.ts";
+import { badgeWordFor, resolveVenueKind, venueNoun, type VenueKind } from "./venue.ts";
 import type {
   ActionLink,
   Area,
@@ -450,8 +450,11 @@ export function buildSkeletonContext(
   const venueKind = resolveVenueKind(input.industry, input.storeName);
   const area = parseArea(input.address);
   const genre = parseGenre(input.catchphrase, area);
-  const word = resolveWord(genre, input.industry);
-  const headlineWordRaw = resolveHeadlineWord(genre, input.industry);
+  // 非店舗（office/company/clinic）は審査カテゴリ由来の業種語を出さない。
+  // バッジは名称・キャッチコピーから拾った実際の職種語（badgeWordFor）、
+  // 見出しは word=null（骨格側の「店名だけで書ける型」に任せる。2026-08-19指摘の再発防止）。
+  const word = venueKind === "shop" ? resolveWord(genre, input.industry) : badgeWordFor(venueKind, input.storeName, input.catchphrase);
+  const headlineWordRaw = venueKind === "shop" ? resolveHeadlineWord(genre, input.industry) : null;
   const headlineWord = shouldDropHeadlineWord(headlineWordRaw, input.storeName) ? null : headlineWordRaw;
   const seed = seedOf(input);
   const rawHeadline = buildHeadline(skeleton.headlines, buildHeadlineParts(input, area, headlineWord), seed);
