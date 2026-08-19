@@ -1,5 +1,5 @@
 import { generateContent, ProviderError, type GeneratedContent, type WorkersAiBinding } from "./generation/provider.ts";
-import { qaContent, sanitizeVenueTerms, VENUE_LANGUAGE_QA_REASON } from "./domain/qa.ts";
+import { CATEGORY_LEAK_QA_REASON, qaContent, sanitizeCategoryLeak, sanitizeVenueTerms, VENUE_LANGUAGE_QA_REASON } from "./domain/qa.ts";
 import { enforceRateLimit, RateLimitError, type RateLimitStore } from "./domain/rateLimit.ts";
 import { renderSite } from "./domain/render.ts";
 import { SKELETONS } from "./domain/render/skeletons/index.ts";
@@ -66,7 +66,10 @@ interface CheckedGeneration {
   readonly reason?: string;
 }
 
-/** 非店舗用の語彙違反だけは再生成し、それでも直らなければ決定的な機械置換へ倒す。 */
+/**
+ * 非店舗用の語彙違反（来店語・審査カテゴリ名の混入）だけは再生成し、
+ * それでも直らなければ決定的な機械置換へ倒す。両方とも同じリトライ／フォールバック経路に乗せる。
+ */
 async function generateCheckedContent(
   input: SiteInput,
   env: Env,
@@ -85,11 +88,11 @@ async function generateCheckedContent(
     const qa = qaContent(generated, input);
     if (qa.ok) return { content: generated };
     lastReason = qa.reason;
-    if (qa.reason !== VENUE_LANGUAGE_QA_REASON) break;
+    if (qa.reason !== VENUE_LANGUAGE_QA_REASON && qa.reason !== CATEGORY_LEAK_QA_REASON) break;
     venueFallback = generated;
   }
   if (!venueFallback) return { reason: lastReason };
-  const sanitized = sanitizeVenueTerms(venueFallback, input);
+  const sanitized = sanitizeCategoryLeak(sanitizeVenueTerms(venueFallback, input), input);
   const fallbackQa = qaContent(sanitized, input);
   return fallbackQa.ok ? { content: sanitized } : { reason: fallbackQa.reason ?? lastReason };
 }

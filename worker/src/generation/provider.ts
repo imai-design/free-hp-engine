@@ -1,5 +1,5 @@
 import type { SiteInput } from "../domain/validate.ts";
-import { resolveVenueKind, type VenueKind } from "../domain/render/venue.ts";
+import { badgeWordFor, resolveVenueKind, type VenueKind } from "../domain/render/venue.ts";
 
 export interface GeneratedContent {
   subheadline: string;
@@ -151,12 +151,25 @@ function truncateForLog(value: string): string {
   return value.length > LOG_SNIPPET_MAX_LENGTH ? `${value.slice(0, LOG_SNIPPET_MAX_LENGTH)}…(truncated)` : value;
 }
 
+/**
+ * LLMに渡す業種語。審査カテゴリ名（INDUSTRIESの表示名。例:「士業・専門サービス」）を
+ * そのまま渡すと、生成文（subheadline等）にカテゴリ名が機械的に混入する不具合があった
+ * （2026-08-19実物: 「中央区新川で、専門性の高い税理士サービスを提供する士業・専門サービス」）。
+ * 非店舗（office/company/clinic）はbadgeWordFor（税理士/不動産/クリニック等の実際の職種語）に
+ * 差し替え、shopは従来どおり業種名をそのまま渡す。
+ */
+function industryWordForPrompt(input: SiteInput, venueKind: VenueKind): string {
+  if (venueKind === "shop") return input.industry;
+  return badgeWordFor(venueKind, input.storeName, input.catchphrase);
+}
+
 function buildUserPrompt(input: SiteInput, venueKind: VenueKind): string {
   const nameLabel = venueKind === "shop" ? "店名" : "名称";
+  const promptInput = { ...input, industry: industryWordForPrompt(input, venueKind) };
   return [
     `次の利用者データを、指定JSON形式で紹介文にしてください。${nameLabel}と業種を内容に反映してください。`,
     "<business_input>",
-    JSON.stringify(input),
+    JSON.stringify(promptInput),
     "</business_input>",
   ].join("\n");
 }

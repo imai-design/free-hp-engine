@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { qaContent, sanitizeVenueTerms, VENUE_LANGUAGE_QA_REASON } from "../src/domain/qa.ts";
+import { CATEGORY_LEAK_QA_REASON, qaContent, sanitizeCategoryLeak, sanitizeVenueTerms, VENUE_LANGUAGE_QA_REASON } from "../src/domain/qa.ts";
 import { footerHtml, sampleNoticeOf } from "../src/domain/render/parts.ts";
 import { badgeWordFor, resolveVenueKind, venueNoun, type VenueKind } from "../src/domain/render/venue.ts";
 import {
@@ -145,6 +145,45 @@ test("Workers AIとAnthropicの呼び出しは入力から解決したVenueKind�
   assert.ok(anthropicMessages[0].content.includes("名称と業種"));
 });
 
+test("非店舗（office）のLLMプロンプトには審査カテゴリ名を渡さず、名称から拾った実際の職種語を渡す", async () => {
+  let anthropicBody: Record<string, unknown> | undefined;
+  const fakeFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    anthropicBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({ content: [{ type: "text", text: JSON.stringify(safeContent) }] }));
+  }) as typeof fetch;
+  await generateContentAnthropic(
+    input("士業・専門サービス", "山田太郎税理士事務所"),
+    { ANTHROPIC_API_KEY: "test" },
+    fakeFetch,
+  );
+  const userContent = (anthropicBody?.messages as { role: string; content: string }[])[0].content;
+  assert.doesNotMatch(userContent, /士業・専門サービス/u, "審査カテゴリ名がプロンプトに残っている");
+  assert.match(userContent, /"industry":"税理士"/u, "名称から拾った職種語（税理士）がプロンプトにない");
+
+  let workersOptions: Record<string, unknown> | undefined;
+  await generateContentWorkersAi(input("不動産・建設", "サンタマ地所不動産株式会社"), {
+    AI: {
+      async run(_model, options) {
+        workersOptions = options;
+        return { response: safeContent };
+      },
+    },
+  });
+  const workersUserContent = (workersOptions?.messages as { role: string; content: string }[])[1].content;
+  assert.doesNotMatch(workersUserContent, /不動産・建設/u, "審査カテゴリ名がプロンプトに残っている");
+  assert.match(workersUserContent, /"industry":"不動産"/u, "名称から拾った職種語（不動産）がプロンプトにない");
+
+  // shopは従来どおり業種名をそのまま渡す（後方互換）。
+  let shopBody: Record<string, unknown> | undefined;
+  const shopFetch = (async (_url: string | URL | Request, init?: RequestInit) => {
+    shopBody = JSON.parse(String(init?.body)) as Record<string, unknown>;
+    return new Response(JSON.stringify({ content: [{ type: "text", text: JSON.stringify(safeContent) }] }));
+  }) as typeof fetch;
+  await generateContentAnthropic(input("飲食店", "柴田食堂"), { ANTHROPIC_API_KEY: "test" }, shopFetch);
+  const shopUserContent = (shopBody?.messages as { role: string; content: string }[])[0].content;
+  assert.match(shopUserContent, /"industry":"飲食店"/u, "shopの業種名がプロンプトから消えている");
+});
+
 test("QAは非店舗の生成4項目に店舗語があれば落とし、最終フォールバックはVenueKind別の語へ置換する", () => {
   const badContent: GeneratedContent = {
     subheadline: "行政書士 柴田事務所は地域のお店です。",
@@ -173,4 +212,49 @@ test("QAは非店舗の生成4項目に店舗語があれば落とし、最終�
     assert.doesNotMatch(combined, /ご来店|来店|お店/u);
     assert.equal(qaContent(sanitized, siteInput).ok, true);
   }
+});
+
+test("QAは審査カテゴリ名（士業・専門サービス／不動産・建設／医療・クリニック）の混入を弾き、最終フォールバックはbadge語へ機械置換する", () => {
+  const officeInput = input("士業・専門サービス", "山田太郎税理士事務所");
+  const officeLeak: GeneratedContent = {
+    subheadline: "山田太郎税理士事務所は、士業・専門サービスとして地域の相談に対応します。",
+    aboutText: "税務や相続の相談に、経験豊富なスタッフが対応します。",
+    highlights: ["丁寧なヒアリングを行います"],
+    closingText: "まずはご相談ください。",
+  };
+  assert.deepEqual(qaContent(officeLeak, officeInput), { ok: false, reason: CATEGORY_LEAK_QA_REASON });
+
+  const companyInput = input("不動産・建設", "サンタマ地所不動産株式会社");
+  const companyLeak: GeneratedContent = {
+    ...officeLeak,
+    subheadline: "サンタマ地所不動産株式会社は、不動産・建設として地域に貢献します。",
+  };
+  assert.deepEqual(qaContent(companyLeak, companyInput), { ok: false, reason: CATEGORY_LEAK_QA_REASON });
+
+  const clinicInput = input("医療・クリニック", "青空クリニック");
+  const clinicLeak: GeneratedContent = {
+    ...officeLeak,
+    subheadline: "青空クリニックは、医療・クリニックとして地域の健康を支えます。",
+  };
+  assert.deepEqual(qaContent(clinicLeak, clinicInput), { ok: false, reason: CATEGORY_LEAK_QA_REASON });
+
+  const cases = [
+    [officeInput, officeLeak, "税理士"],
+    [companyInput, companyLeak, "不動産"],
+    [clinicInput, clinicLeak, "クリニック"],
+  ] as const satisfies readonly (readonly [SiteInput, GeneratedContent, string])[];
+  for (const [siteInput, content, badgeWord] of cases) {
+    const sanitized = sanitizeCategoryLeak(content, siteInput);
+    const combined = [sanitized.subheadline, sanitized.aboutText, ...sanitized.highlights, sanitized.closingText].join("\n");
+    assert.doesNotMatch(combined, /士業・専門サービス|不動産・建設|医療・クリニック/u, `${siteInput.storeName}: カテゴリ名が残っている`);
+    assert.ok(combined.includes(badgeWord), `${siteInput.storeName}: badge語（${badgeWord}）に置換されていない`);
+    assert.equal(qaContent(sanitized, siteInput).ok, true, `${siteInput.storeName}: 置換後もQAに通らない`);
+  }
+
+  // shopは業種名がそのまま出てもよく、この検出対象の3語自体が出ることも無い（後方互換の確認）。
+  const shopOk = qaContent(
+    { ...safeContent, subheadline: "柴田食堂は飲食店として地域に愛されています。" },
+    input("飲食店", "柴田食堂"),
+  );
+  assert.equal(shopOk.ok, true);
 });
