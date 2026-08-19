@@ -8,6 +8,9 @@ const NEW_INDUSTRIES = [
   "教室・スクール",
   "小売・物販",
   "修理・住まいのサービス",
+  "士業・専門サービス",
+  "不動産・建設",
+  "医療・クリニック",
 ] as const satisfies readonly Industry[];
 
 const baseInput = {

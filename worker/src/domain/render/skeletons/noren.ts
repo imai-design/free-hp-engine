@@ -1,5 +1,6 @@
 import { footerHtml, renderActionLinks, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
+import { headingsForVenue } from "../venue.ts";
 
 const FIXED = {
   paper: "#EDE6D6",
@@ -185,6 +186,7 @@ function contactSection(ctx: SkeletonContext): string {
 }
 
 function body(ctx: SkeletonContext): string {
+  const headings = headingsForVenue(ctx.venueKind, HEADINGS);
   const industryFuda = ctx.word ? `<span class="mokusatsu industry">${ctx.word}</span>` : "";
   const areaFuda = ctx.areaFull ? `<span class="mokusatsu">${ctx.areaFull}</span>` : "";
   const fudaRow = industryFuda || areaFuda ? `<div class="fuda-row">${industryFuda}${areaFuda}</div>` : "";
@@ -196,7 +198,7 @@ function body(ctx: SkeletonContext): string {
     ? `<figure class="photo"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`
     : "";
   const highlights = ctx.highlights.length
-    ? `<section class="shina"><h2>${HEADINGS.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul></section>`
+    ? `<section class="shina"><h2>${headings.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul></section>`
     : "";
   const menu = ctx.menuItems.length
     ? `<section class="shina menu"><h2>お品書き</h2><ul class="menu__list">${renderMenuItems(ctx.menuItems)}</ul></section>`
@@ -219,14 +221,14 @@ function body(ctx: SkeletonContext): string {
 ${photo}
 <div class="kamachi"></div>
 <main class="wrap">
-  <section><h2>${HEADINGS.about}</h2><p>${ctx.about}</p></section>
+  <section><h2>${headings.about}</h2><p>${ctx.about}</p></section>
   ${highlights}
   ${menu}
-  <section><h2>${HEADINGS.closing}</h2><p>${ctx.closing}</p></section>
+  <section><h2>${headings.closing}</h2><p>${ctx.closing}</p></section>
   ${renderActionLinks(ctx.actions, "actions", "action")}
   ${contactSection(ctx)}
 </main>
-<footer class="shikiishi"><div class="wrap">${footerHtml(ctx.isSample)}</div></footer>`;
+<footer class="shikiishi"><div class="wrap">${footerHtml(ctx.isSample, ctx.venueKind)}</div></footer>`;
 }
 
 export const NOREN: Skeleton = {

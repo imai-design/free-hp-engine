@@ -1,5 +1,6 @@
 import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
+import { headingsForVenue } from "../venue.ts";
 
 // 既存5配色の固定トークン。新テーマは骨格を保ったまま、必要な地色・文字色だけ上書きする。
 const FIXED = {
@@ -167,6 +168,7 @@ function frontInfoLine(ctx: SkeletonContext): string {
 }
 
 function body(ctx: SkeletonContext): string {
+  const headings = headingsForVenue(ctx.venueKind, HEADINGS);
   const field = ctx.initial
     ? `<div class="meishi__field"><span class="deboss" aria-hidden="true">${ctx.initial}</span></div>`
     : "";
@@ -180,7 +182,7 @@ function body(ctx: SkeletonContext): string {
     : "";
   const lead = ctx.lead ? `<p class="ura__lead">${ctx.lead}</p>` : "";
   const highlights = ctx.highlights.length
-    ? `<h2>${HEADINGS.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul>`
+    ? `<h2>${headings.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul>`
     : "";
   const menu = ctx.menuItems.length
     ? `<section class="menu"><h2>しな書き</h2><ul class="menu__list">${renderMenuItems(ctx.menuItems)}</ul></section>`
@@ -207,20 +209,20 @@ function body(ctx: SkeletonContext): string {
     <h2 class="ura__mark">うら書き</h2>
     <p class="ura__headline">${ctx.headline}</p>
     ${lead}
-    <h2>${HEADINGS.about}</h2><p>${ctx.about}</p>
+    <h2>${headings.about}</h2><p>${ctx.about}</p>
     ${highlights}
     ${menu}
-    <h2>${HEADINGS.closing}</h2><p>${ctx.closing}</p>
+    <h2>${headings.closing}</h2><p>${ctx.closing}</p>
     ${actions}
     ${contact}
   </article>
-  <footer>${footerHtml(ctx.isSample)}</footer>
+  <footer>${footerHtml(ctx.isSample, ctx.venueKind)}</footer>
 </main>`;
 }
 
 export const MEISHI: Skeleton = {
   key: "名刺",
-  industries: ["飲食店", "美容・サロン", "教室・スクール", "小売・物販", "修理・住まいのサービス", "その他"],
+  industries: ["飲食店", "美容・サロン", "教室・スクール", "小売・物販", "修理・住まいのサービス", "士業・専門サービス", "不動産・建設", "医療・クリニック", "その他"],
   palettes: PALETTES,
   headings: HEADINGS,
   contactLabels: CONTACT_LABELS,

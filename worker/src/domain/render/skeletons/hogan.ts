@@ -1,5 +1,6 @@
 import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
+import { headingsForVenue } from "../venue.ts";
 
 const FIXED = {
   paper: "#FCFBF4",
@@ -140,6 +141,7 @@ function miseLine(ctx: SkeletonContext): string {
 }
 
 function body(ctx: SkeletonContext): string {
+  const headings = headingsForVenue(ctx.venueKind, HEADINGS);
   const tagline = ctx.tagline ? `<p class="tagline">${ctx.tagline}</p>` : "";
   const sampleNotice = ctx.isSample ? `<p class="sample-notice">${ctx.sampleNoticeHtml}</p>` : "";
   const lead = ctx.lead ? `<p class="lead">${ctx.lead}</p>` : "";
@@ -147,7 +149,7 @@ function body(ctx: SkeletonContext): string {
     ? `<figure class="photo"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`
     : "";
   const highlights = ctx.highlights.length
-    ? `<section><h2>${HEADINGS.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul><div class="kiri"></div></section>`
+    ? `<section><h2>${headings.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul><div class="kiri"></div></section>`
     : "";
   const menu = ctx.menuItems.length
     ? `<section class="menu"><h2>料金表</h2><ul class="menu__list">${renderMenuItems(ctx.menuItems)}</ul></section>`
@@ -169,18 +171,18 @@ function body(ctx: SkeletonContext): string {
   <p class="yago">${ctx.storeName}</p>
   ${lead}
   ${photo}
-  <section><h2>${HEADINGS.about}</h2><p>${ctx.about}</p></section>
+  <section><h2>${headings.about}</h2><p>${ctx.about}</p></section>
   <div class="kiri"></div>
   ${highlights}
   ${menu}
-  <section><h2>${HEADINGS.closing}</h2><p>${ctx.closing}</p>${actions}${contact}</section>
-  <footer>${footerHtml(ctx.isSample)}</footer>
+  <section><h2>${headings.closing}</h2><p>${ctx.closing}</p>${actions}${contact}</section>
+  <footer>${footerHtml(ctx.isSample, ctx.venueKind)}</footer>
 </main>`;
 }
 
 export const HOGAN: Skeleton = {
   key: "方眼",
-  industries: ["飲食店", "教室・スクール", "小売・物販", "修理・住まいのサービス", "その他"],
+  industries: ["飲食店", "教室・スクール", "小売・物販", "修理・住まいのサービス", "士業・専門サービス", "不動産・建設", "医療・クリニック", "その他"],
   palettes: PALETTES,
   headings: HEADINGS,
   contactLabels: CONTACT_LABELS,

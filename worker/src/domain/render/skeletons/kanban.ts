@@ -1,5 +1,6 @@
 import { footerHtml, renderActionLinks, renderMenuItems, SAMPLE_STORE_NAME_PREFIX } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
+import { headingsForVenue, venueNoun } from "../venue.ts";
 
 /*
  * WCAG AA contrast ratios (sRGB, foreground/background).
@@ -238,10 +239,12 @@ function contactSection(ctx: SkeletonContext): string {
       return `<p class="contact-row${phoneClass}"><span class="contact-label">${CONTACT_LABELS[row.kind]}</span><span class="contact-value">${row.valueHtml}</span></p>`;
     })
     .join("");
-  return `<section class="panel contact"><h2>店の案内</h2>${rows}</section>`;
+  const heading = ctx.venueKind === "shop" ? "店の案内" : `${venueNoun(ctx.venueKind)}の案内`;
+  return `<section class="panel contact"><h2>${heading}</h2>${rows}</section>`;
 }
 
 function body(ctx: SkeletonContext): string {
+  const headings = headingsForVenue(ctx.venueKind, HEADINGS);
   const tagline = ctx.tagline ? `<p class="tagline">${ctx.tagline}</p>` : "";
   const lead = ctx.lead ? `<p class="hero__lead">${ctx.lead}</p>` : "";
   const sampleNotice = ctx.isSample ? `<p class="sample-notice">${ctx.sampleNoticeHtml}</p>` : "";
@@ -249,7 +252,7 @@ function body(ctx: SkeletonContext): string {
     ? `<figure class="photo"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`
     : "";
   const highlights = ctx.highlights.length
-    ? `<section class="panel"><h2>${HEADINGS.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul></section>`
+    ? `<section class="panel"><h2>${headings.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul></section>`
     : "";
   const menu = ctx.menuItems.length
     ? `<section class="panel menu"><h2>品書き・価格</h2><ul class="menu__list">${renderMenuItems(ctx.menuItems)}</ul></section>`
@@ -269,18 +272,18 @@ function body(ctx: SkeletonContext): string {
 <main class="wrap">
   ${sampleNotice}
   ${photo}
-  <section class="panel"><h2>${HEADINGS.about}</h2><p>${ctx.about}</p></section>
+  <section class="panel"><h2>${headings.about}</h2><p>${ctx.about}</p></section>
   ${highlights}
   ${menu}
-  <section class="panel"><h2>${HEADINGS.closing}</h2><p>${ctx.closing}</p>${renderActionLinks(ctx.actions, "actions", "action")}</section>
+  <section class="panel"><h2>${headings.closing}</h2><p>${ctx.closing}</p>${renderActionLinks(ctx.actions, "actions", "action")}</section>
   ${contactSection(ctx)}
 </main>
-<footer><div class="wrap">${footerHtml(ctx.isSample)}</div></footer>`;
+<footer><div class="wrap">${footerHtml(ctx.isSample, ctx.venueKind)}</div></footer>`;
 }
 
 export const KANBAN: Skeleton = {
   key: "看板",
-  industries: ["飲食店", "小売・物販", "その他"],
+  industries: ["飲食店", "小売・物販", "士業・専門サービス", "不動産・建設", "医療・クリニック", "その他"],
   palettes: PALETTES,
   headings: HEADINGS,
   contactLabels: CONTACT_LABELS,

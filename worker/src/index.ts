@@ -1,5 +1,5 @@
 import { generateContent, ProviderError, type GeneratedContent, type WorkersAiBinding } from "./generation/provider.ts";
-import { qaContent } from "./domain/qa.ts";
+import { qaContent, sanitizeVenueTerms, VENUE_LANGUAGE_QA_REASON } from "./domain/qa.ts";
 import { enforceRateLimit, RateLimitError, type RateLimitStore } from "./domain/rateLimit.ts";
 import { renderSite } from "./domain/render.ts";
 import { SKELETONS } from "./domain/render/skeletons/index.ts";
@@ -58,6 +58,40 @@ const ALLOWED_ORIGINS = new Set([
 const DEFAULT_BASE_URL = "https://free-hp-engine.ryoseiworld.workers.dev";
 const TOP_PAGE_URL = "https://freehp.jp/";
 const SAMPLE_TTL_SECONDS = 60 * 60 * 24 * 90;
+const MAX_GENERATION_QA_ATTEMPTS = 2;
+
+interface CheckedGeneration {
+  readonly content?: GeneratedContent;
+  readonly reason?: string;
+}
+
+/** 非店舗用の語彙違反だけは再生成し、それでも直らなければ決定的な機械置換へ倒す。 */
+async function generateCheckedContent(
+  input: SiteInput,
+  env: Env,
+  generator: NonNullable<RequestContext["generate"]>,
+): Promise<CheckedGeneration> {
+  let venueFallback: GeneratedContent | undefined;
+  let lastReason: string | undefined;
+  for (let attempt = 1; attempt <= MAX_GENERATION_QA_ATTEMPTS; attempt += 1) {
+    let generated: GeneratedContent;
+    try {
+      generated = await generator(input, env);
+    } catch (error) {
+      if (!venueFallback) throw error;
+      break;
+    }
+    const qa = qaContent(generated, input);
+    if (qa.ok) return { content: generated };
+    lastReason = qa.reason;
+    if (qa.reason !== VENUE_LANGUAGE_QA_REASON) break;
+    venueFallback = generated;
+  }
+  if (!venueFallback) return { reason: lastReason };
+  const sanitized = sanitizeVenueTerms(venueFallback, input);
+  const fallbackQa = qaContent(sanitized, input);
+  return fallbackQa.ok ? { content: sanitized } : { reason: fallbackQa.reason ?? lastReason };
+}
 
 function json(data: unknown, status = 200, headers: HeadersInit = {}): Response {
   return new Response(JSON.stringify(data), {
@@ -183,7 +217,11 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
   }
   let content: GeneratedContent;
   try {
-    content = await (context.generate ?? generateContent)(input, env);
+    const generated = await generateCheckedContent(input, env, context.generate ?? generateContent);
+    if (!generated.content) {
+      return json({ error: "生成内容の確認に失敗しました。もう一度お試しください。" }, 422);
+    }
+    content = generated.content;
   } catch (error) {
     // 枠切れは翌日まで回復しない。「少し時間をおいて」と案内すると嘘になるので分けて伝える。
     if (error instanceof ProviderError && error.code === "daily_quota_exhausted") {
@@ -196,8 +234,6 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
     if (isNotConfigured) return json({ error: "生成サービスの準備中です。" }, 503);
     return json({ error: "生成サービスとの通信に失敗しました。" }, 502);
   }
-  const qa = qaContent(content, input);
-  if (!qa.ok) return json({ error: "生成内容の確認に失敗しました。もう一度お試しください。" }, 422);
   const baseUrl = (env.PUBLIC_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/u, "");
   let slug: string;
   let publicUrl: string;
@@ -578,7 +614,11 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
   }
   let content: GeneratedContent;
   try {
-    content = await (context.generate ?? generateContent)(input, env);
+    const generated = await generateCheckedContent(input, env, context.generate ?? generateContent);
+    if (!generated.content) {
+      return json({ error: "生成内容の確認に失敗しました。", reason: generated.reason }, 422);
+    }
+    content = generated.content;
   } catch (error) {
     // 合鍵が要る経路なので、原因の切り分けができるよう詳細まで返す（申込フォーム側は伏せたまま）。
     return json({
@@ -587,8 +627,6 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
       detail: error instanceof ProviderError ? (error.upstreamMessage ?? error.message) : (error instanceof Error ? error.message : String(error)),
     }, 502);
   }
-  const qa = qaContent(content, input);
-  if (!qa.ok) return json({ error: "生成内容の確認に失敗しました。", reason: qa.reason }, 422);
   const baseUrl = (env.PUBLIC_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/u, "");
   try {
     const slug = await createUniqueSlug(env.SITES, input.storeName);

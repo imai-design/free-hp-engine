@@ -559,6 +559,45 @@ test("sampleSource:threadsを指定すると「Threadsでのご投稿」の断�
   assert.ok(!html.includes("地図サービスの公開情報"), "地図由来の文言が残っている");
 });
 
+test("その他の『行政書士 柴田事務所』は再生成後も店舗語が残れば機械置換し、事務所向けHTMLだけを公開する", async () => {
+  const store = new MemoryKv();
+  let generationCalls = 0;
+  const response = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({
+        ...validInput,
+        storeName: "行政書士 柴田事務所",
+        industry: "その他",
+        skeleton: "短冊",
+      }),
+    }),
+    { ...env(), SITES: store, BATCH_KEY: "correct-key" },
+    {
+      generate: async () => {
+        generationCalls += 1;
+        return {
+          subheadline: "行政書士 柴田事務所は、地域のお店として相談に対応します。",
+          aboutText: "初めて来店する方にも、手続きを順に説明します。",
+          highlights: ["ご来店前に相談内容を確認します"],
+          closingText: "皆様のご来店を心よりお待ちしております。",
+        };
+      },
+    },
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(generationCalls, 2, "店舗語のQA不合格後に再生成していない");
+  const { slug } = await response.json() as { slug: string };
+  const html = store.values.get(`site:${slug}`) as string;
+  assert.doesNotMatch(html, /お店|ご来店|来店|ここでしていること|ふだんのこと|お越しになる方へ/u);
+  assert.ok(html.includes("事務所"));
+  assert.ok(html.includes("業務内容"));
+  assert.ok(html.includes("主なご相談"));
+  assert.ok(html.includes("ご相談の前に"));
+});
+
 test("不正なsampleSourceは400を返す", async () => {
   const response = await handleRequest(
     new Request("https://example.com/api/sample", {

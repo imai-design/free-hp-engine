@@ -1,4 +1,5 @@
 import type { Industry, SampleSource } from "../validate.ts";
+import type { VenueKind } from "./venue.ts";
 
 export type { SampleSource };
 
@@ -70,6 +71,7 @@ export interface MenuItem {
  * 骨格側から input / content を直接読んでもいけない（生の値が漏れる）。
  */
 export interface SkeletonContext {
+  readonly venueKind: VenueKind;
   readonly headline: string;
   readonly lead: string; // クリシェ除去後。落ちたら ""
   readonly tagline: string; // 店主自筆と判定できたときだけ。機械文なら ""

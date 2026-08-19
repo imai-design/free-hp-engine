@@ -4,6 +4,9 @@ export const INDUSTRIES = [
   "教室・スクール",
   "小売・物販",
   "修理・住まいのサービス",
+  "士業・専門サービス",
+  "不動産・建設",
+  "医療・クリニック",
   "その他",
 ] as const;
 export const COLOR_THEMES = ["あたたかい", "落ち着いた", "さわやか", "たのしい", "しっとり"] as const;

@@ -1,5 +1,6 @@
 import { footerHtml, renderActionLinks, renderContactRows, renderMenuItems } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
+import { headingsForVenue } from "../venue.ts";
 
 const FIXED = {
   paper: "#F2F3EF",
@@ -137,6 +138,7 @@ function verticalTextOf(ctx: SkeletonContext): string {
 }
 
 function body(ctx: SkeletonContext): string {
+  const headings = headingsForVenue(ctx.venueKind, HEADINGS);
   const tate = verticalTextOf(ctx);
   const kuni = ctx.word ? `<p class="kuni industry">${ctx.word}</p>` : "";
   const tagline = ctx.tagline ? `<p class="tagline">${ctx.tagline}</p>` : "";
@@ -146,7 +148,7 @@ function body(ctx: SkeletonContext): string {
     ? `<figure class="photo"><img src="${ctx.photo.srcHtml}" alt="${ctx.photo.altHtml}" loading="eager" decoding="async"></figure>`
     : "";
   const highlights = ctx.highlights.length
-    ? `<section><h2>${HEADINGS.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul></section>`
+    ? `<section><h2>${headings.highlights}</h2><ul>${ctx.highlights.map((item) => `<li>${item}</li>`).join("")}</ul></section>`
     : "";
   const menu = ctx.menuItems.length
     ? `<section class="menu"><h2>menu</h2><ul class="menu__list">${renderMenuItems(ctx.menuItems)}</ul></section>`
@@ -169,17 +171,17 @@ function body(ctx: SkeletonContext): string {
   ${sampleNotice}
   <p class="yago">${ctx.storeName}</p>
   ${photo}
-  <section><h2>${HEADINGS.about}</h2><p>${ctx.about}</p></section>
+  <section><h2>${headings.about}</h2><p>${ctx.about}</p></section>
   ${highlights}
   ${menu}
-  <section><h2>${HEADINGS.closing}</h2><p>${ctx.closing}</p>${actions}${contact}</section>
-  <footer>${footerHtml(ctx.isSample)}</footer>
+  <section><h2>${headings.closing}</h2><p>${ctx.closing}</p>${actions}${contact}</section>
+  <footer>${footerHtml(ctx.isSample, ctx.venueKind)}</footer>
 </main>`;
 }
 
 export const TANZAKU: Skeleton = {
   key: "短冊",
-  industries: ["美容・サロン", "教室・スクール", "小売・物販", "修理・住まいのサービス", "その他"],
+  industries: ["美容・サロン", "教室・スクール", "小売・物販", "修理・住まいのサービス", "士業・専門サービス", "不動産・建設", "医療・クリニック", "その他"],
   palettes: PALETTES,
   headings: HEADINGS,
   contactLabels: CONTACT_LABELS,

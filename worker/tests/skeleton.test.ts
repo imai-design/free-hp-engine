@@ -65,6 +65,9 @@ const EXPECTED_SKELETONS_BY_INDUSTRY: Record<Industry, readonly SkeletonKey[]> =
   "教室・スクール": ["名刺", "短冊", "方眼"],
   "小売・物販": ["名刺", "短冊", "方眼", "看板"],
   "修理・住まいのサービス": ["名刺", "短冊", "方眼"],
+  "士業・専門サービス": ["名刺", "短冊", "方眼", "看板"],
+  "不動産・建設": ["名刺", "短冊", "方眼", "看板"],
+  "医療・クリニック": ["名刺", "短冊", "方眼", "看板"],
   その他: ["名刺", "短冊", "方眼", "看板"],
 };
 
@@ -135,6 +138,27 @@ test("5骨格それぞれがレンダリングでき、--photo-aspect / --photo-
     assert.match(html, /--dye-max:\s*[0-9.]+rem;/u, `${skeleton}: --dye-maxが無い`);
     assert.ok(html.includes(`data-型="${skeleton}"`), `${skeleton}: data-型が一致しない`);
     assert.match(html, /class="[^"]*tagline[^"]*"/u, `${skeleton}: taglineクラスが無い`);
+  }
+});
+
+test("5骨格の節見出しは店舗向けを維持し、office/company/clinicではVenueKind別の3見出しになる", () => {
+  const venueCases = [
+    { industry: "士業・専門サービス", headings: ["業務内容", "主なご相談", "ご相談の前に"] },
+    { industry: "不動産・建設", headings: ["事業内容", "取り扱い", "お問い合わせの前に"] },
+    { industry: "医療・クリニック", headings: ["診療内容", "主な診療", "ご来院の前に"] },
+  ] as const satisfies readonly { industry: Industry; headings: readonly string[] }[];
+
+  for (const skeleton of SKELETONS) {
+    const shopHtml = renderSite(baseInput({ industry: "飲食店" }), baseContent, { skeleton: skeleton.key });
+    for (const heading of Object.values(skeleton.headings)) {
+      assert.ok(shopHtml.includes(`<h2>${heading}</h2>`), `${skeleton.key}: 店舗向け見出し「${heading}」が変わった`);
+    }
+    for (const { industry, headings } of venueCases) {
+      const html = renderSite(baseInput({ industry, storeName: `${industry}の見本` }), baseContent, { skeleton: skeleton.key });
+      for (const heading of headings) {
+        assert.ok(html.includes(`<h2>${heading}</h2>`), `${skeleton.key} / ${industry}: 「${heading}」が出ていない`);
+      }
+    }
   }
 });
 
@@ -240,10 +264,17 @@ test("看板は店名・キャッチ・連絡先・メニュー・行動ボタ�
   assert.ok(sample.includes("90日"), "見本用フッターが出ていない");
 });
 
-test("看板の対応業種は飲食店・小売/物販・その他だけ", () => {
+test("看板の対応業種は飲食店・小売/物販・非店舗3業種・その他", () => {
   const kanban = SKELETONS.find((skeleton) => skeleton.key === "看板");
   assert.ok(kanban, "看板骨格が登録されていない");
-  assert.deepEqual(kanban.industries, ["飲食店", "小売・物販", "その他"]);
+  assert.deepEqual(kanban.industries, [
+    "飲食店",
+    "小売・物販",
+    "士業・専門サービス",
+    "不動産・建設",
+    "医療・クリニック",
+    "その他",
+  ]);
 });
 
 test("看板は5テーマすべてでレンダリングできる", () => {
@@ -393,6 +424,9 @@ test("resolveHeadlineWord: 業種ラベルは見出し用に自然な言い方�
     "教室・スクール": "教室",
     "小売・物販": "お店",
     "修理・住まいのサービス": "暮らしの相談先",
+    "士業・専門サービス": "事務所",
+    "不動産・建設": "会社",
+    "医療・クリニック": "医院",
     その他: null,
   };
   for (const industry of INDUSTRIES) {
@@ -422,6 +456,9 @@ test("見出し(h1相当)に業種ラベルがそのまま入らない（5骨格
     "教室・スクール": "教室・スクール",
     "小売・物販": "小売・物販",
     "修理・住まいのサービス": "修理・住まいのサービス",
+    "士業・専門サービス": "士業・専門サービス",
+    "不動産・建設": "不動産・建設",
+    "医療・クリニック": "医療・クリニック",
     その他: null,
   };
   for (const skeleton of SKELETONS) {

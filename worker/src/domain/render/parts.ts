@@ -3,6 +3,7 @@ import { readImageSize, type ImageSize, type PhotoShape } from "../imageSize.ts"
 import type { Industry, SampleSource, SiteInput } from "../validate.ts";
 import { pickIndex, seedOf } from "./hash.ts";
 import { buildHeadline } from "./headline.ts";
+import { resolveVenueKind, venueNoun, type VenueKind } from "./venue.ts";
 import type {
   ActionLink,
   Area,
@@ -74,6 +75,9 @@ const INDUSTRY_WORDS: Record<Industry, string | null> = {
   "教室・スクール": "教室・スクール",
   "小売・物販": "小売・物販",
   "修理・住まいのサービス": "修理・住まいのサービス",
+  "士業・専門サービス": "士業・専門サービス",
+  "不動産・建設": "不動産・建設",
+  "医療・クリニック": "医療・クリニック",
   その他: null, // 店が自分のページで「その他」と名乗ることになるので出さない
 };
 
@@ -94,6 +98,9 @@ const HEADLINE_INDUSTRY_WORDS: Record<Industry, string | null> = {
   "教室・スクール": "教室",
   "小売・物販": "お店",
   "修理・住まいのサービス": "暮らしの相談先",
+  "士業・専門サービス": "事務所",
+  "不動産・建設": "会社",
+  "医療・クリニック": "医院",
   その他: null,
 };
 
@@ -390,26 +397,27 @@ export function buildPhotoInfo(input: SiteInput, photoUrl: string | undefined): 
  * ページ下部の署名。見本（sample）と、お客さんが自分で作ったページで内容を変える。
  * 見本は「連絡がなければ90日で消える」、申込ページは「期限なし」＝実装（KVのTTL有無）と一致させる。
  */
-export function footerHtml(isSample: boolean): string {
+export function footerHtml(isSample: boolean, venueKind: VenueKind = "shop"): string {
   const contact = 'info@freehp.jp';
   const mail = `<a href="mailto:${contact}">${contact}</a>（<a href="https://freehp.jp/">freehp.jp</a>）`;
+  const noun = venueNoun(venueKind);
   return isSample
-    ? `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま90日たつと、自動的に非公開になります。気に入っていただけたら、そのままお店のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（このお店へのお問い合わせ窓口ではありません）：${mail}`
-    : `このホームページは、AIホームページ製作所（RYOSEIWORLD）で作りました。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（このお店へのお問い合わせ窓口ではありません）：${mail}`;
+    ? `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま90日たつと、自動的に非公開になります。気に入っていただけたら、そのまま${noun}のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（この${noun}へのお問い合わせ窓口ではありません）：${mail}`
+    : `このホームページは、AIホームページ製作所（RYOSEIWORLD）で作りました。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（この${noun}へのお問い合わせ窓口ではありません）：${mail}`;
 }
 
 /**
  * 見本ページだけに出す「紹介文は仮のもの」の断り書き。sampleSourceで文言を変える
  * （2026-08-18追加：Threads自動営業から作った見本に「地図サービスの公開情報」と書くと事実と異なるため）。
  */
-const SAMPLE_NOTICE_BY_SOURCE: Readonly<Record<SampleSource, string>> = {
-  map: "このページは、地図サービスの公開情報だけを使って作った<strong>見本</strong>です。紹介文はこちらで仮に書いたもので、お店に伺って書いたものではありません。ご連絡いただければ、お店の言葉に書き直してお渡しします。",
-  threads:
+const SAMPLE_NOTICE_BY_SOURCE: Readonly<Record<SampleSource, (noun: string) => string>> = {
+  map: (noun) => `このページは、地図サービスの公開情報だけを使って作った<strong>見本</strong>です。紹介文はこちらで仮に書いたもので、${noun}に伺って書いたものではありません。ご連絡いただければ、${noun}の言葉に書き直してお渡しします。`,
+  threads: () =>
     "このページは、Threadsでのご投稿を拝見して、こちらで仮に作った<strong>見本</strong>です。名前や内容は仮のもので、ご連絡いただければ本物に作り直してお渡しします。ご連絡がなければ90日で自動的に消えます。",
 };
 
-export function sampleNoticeOf(source: SampleSource): string {
-  return SAMPLE_NOTICE_BY_SOURCE[source];
+export function sampleNoticeOf(source: SampleSource, venueKind: VenueKind = "shop"): string {
+  return SAMPLE_NOTICE_BY_SOURCE[source](venueNoun(venueKind));
 }
 
 // ---- SkeletonContext の組み立て ----
@@ -431,6 +439,7 @@ export function buildSkeletonContext(
   isSample: boolean,
   sampleSource: SampleSource = "map",
 ): SkeletonContext {
+  const venueKind = resolveVenueKind(input.industry, input.storeName);
   const area = parseArea(input.address);
   const genre = parseGenre(input.catchphrase, area);
   const word = resolveWord(genre, input.industry);
@@ -445,6 +454,7 @@ export function buildSkeletonContext(
   const initial = initialOf(input.storeName);
 
   return {
+    venueKind,
     headline: escapeHtml(rawHeadline),
     lead: escapeHtml(lead),
     tagline: escapeHtml(tagline),
@@ -463,7 +473,7 @@ export function buildSkeletonContext(
     actions: buildActions(input),
     photo: buildPhotoInfo(input, photoUrl),
     isSample,
-    sampleNoticeHtml: isSample ? sampleNoticeOf(sampleSource) : "",
+    sampleNoticeHtml: isSample ? sampleNoticeOf(sampleSource, venueKind) : "",
     palette,
   };
 }
