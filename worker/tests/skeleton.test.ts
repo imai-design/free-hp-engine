@@ -490,6 +490,40 @@ test("店名に見出し語と同じ名詞が含まれるとき（例: 店名が
   }
 });
 
+test("看板: 「◯◯、はじめます。」は実在の店名（老舗にも出うる）では選ばれず、見本の仮店名（あなたの〜）でだけ出る（2026-08-19指摘: サンタマ地所の見本で老舗にも開店の言葉が出ていた不具合）", () => {
+  // 実在の老舗を想定した店名で、area・wordの有無を変えつつ多数のseedを試し、
+  // 一度も「はじめます」が出ないことを確認する。
+  for (let i = 0; i < 30; i += 1) {
+    const input = baseInput({
+      industry: "小売・物販",
+      storeName: "有限会社サンタマ地所",
+      address: i % 3 === 0 ? undefined : `東京都杉並区阿佐谷南${i}-1-1`,
+      catchphrase: i % 3 === 1 ? "" : "地域に根ざした不動産のご相談",
+    });
+    const palette = selectPalette(KANBAN, input, false);
+    const ctx = buildSkeletonContext(input, baseContent, KANBAN, palette, undefined, false);
+    assert.ok(
+      !ctx.headline.includes("はじめます"),
+      `実在店名なのに見出しが開店の言葉になった(i=${i}) → "${ctx.headline}"`,
+    );
+  }
+
+  // 見本の仮店名（「あなたの」で始まる）では、area・wordが両方無いときに「はじめます」も候補に入り得る
+  // （必ず選ばれるとは限らないので、複数seedを試して一度でも出ることだけを確認する）。
+  let sawKaiten = false;
+  for (let i = 0; i < 30; i += 1) {
+    const input = baseInput({
+      industry: "小売・物販",
+      storeName: "あなたの果樹園（見本）",
+      address: `東京都渋谷区代々木${i}-1-1`,
+    });
+    const palette = selectPalette(KANBAN, input, false);
+    const ctx = buildSkeletonContext(input, baseContent, KANBAN, palette, undefined, false);
+    if (ctx.headline.includes("はじめます")) sawKaiten = true;
+  }
+  assert.ok(sawKaiten, "見本の仮店名（あなたの〜）では「はじめます」型が候補から完全に消えている（落としすぎ）");
+});
+
 // ---- WCAG AA 4.5:1（自分でも1配色は抜き打ちで検算する。DESIGN_SPEC.md §9-2 その10） ----
 
 function relativeLuminance(hex: string): number {

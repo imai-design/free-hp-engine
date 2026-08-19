@@ -112,7 +112,8 @@ export const resolveHeadlineWord = (genre: string | null, industry: Industry): s
 //（「その名は、◯◯。」「◯◯、はじめます。」等）に譲る。
 
 const GENERIC_HEADLINE_WORD = "お店";
-const SAMPLE_STORE_NAME_PREFIX = "あなたの";
+/** 見本ページの仮店名の接頭辞（例:「あなたの果樹園（見本）」）。他の骨格の見出しパターン選択でも使うためexport。 */
+export const SAMPLE_STORE_NAME_PREFIX = "あなたの";
 
 /** word を見出しで使わず、店名主役の型に譲るべきかどうか。 */
 export function shouldDropHeadlineWord(word: string | null, storeName: string): boolean {

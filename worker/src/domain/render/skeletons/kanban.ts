@@ -1,4 +1,4 @@
-import { footerHtml, renderActionLinks, renderMenuItems } from "../parts.ts";
+import { footerHtml, renderActionLinks, renderMenuItems, SAMPLE_STORE_NAME_PREFIX } from "../parts.ts";
 import type { HeadlineParts, Palette, Skeleton, SkeletonContext } from "../types.ts";
 
 /*
@@ -104,15 +104,19 @@ const HEADINGS = { about: "うちの話", highlights: "大事にしているこ�
 const CONTACT_LABELS = { phone: "電話", address: "場所", hours: "営業時間" };
 
 // 太く短い口上に揃え、看板の店名を主役にしたまま事実だけを伝える。
-// 最後の2つは area も word も無い（＝見本の仮店名「あなたの果樹園（見本）」等）ときの受け皿。
-// 店名だけに依存するので常に使え、業種名を含まないぶん見本名でも機械的に見えない。
+// 「その名は、」「へようこそ」の2つは area も word も無くても常に使える店名だけの型
+// （実在店・見本どちらでも自然）。最後の「はじめます」だけは、老舗など実在の店にも
+// 開店の言葉として出てしまう不具合（2026-08-19指摘）があったため、店名が
+// SAMPLE_STORE_NAME_PREFIX（＝見本の仮店名「あなたの果樹園（見本）」等）で
+// 始まるときだけ候補に入れる。実在店ではこの型を落とし、上の型に譲る。
 const HEADLINES: readonly ((parts: HeadlineParts) => string | null)[] = [
   (p) => (p.area && p.word ? `${p.area}の${p.word}、${p.store}。` : null),
   (p) => (p.area && p.word ? `${p.store}。${p.area}で営む${p.word}です。` : null),
   (p) => (p.area ? `${p.store}は、${p.area}にあります。` : null),
   (p) => (p.word ? `${p.word}の${p.store}です。` : null),
   (p) => `その名は、${p.store}。`,
-  (p) => `${p.store}、はじめます。`,
+  (p) => `${p.store}へようこそ。`,
+  (p) => (p.store.startsWith(SAMPLE_STORE_NAME_PREFIX) ? `${p.store}、はじめます。` : null),
 ];
 
 const CSS = `
