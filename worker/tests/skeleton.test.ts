@@ -230,6 +230,48 @@ test("見本の断り書きはsampleSourceで文言が変わる（5骨格すべ�
   }
 });
 
+test("5骨格のmap/threads見本は最上部に非公式・未承認・削除窓口の帯を出し、通常サイトには出さない", () => {
+  const expected = "これは AIホームページ製作所（freehp.jp）が提案用に作った非公式の見本です。麦の香様の公式サイトではなく、承諾も得ていません。掲載を望まれない場合は info@freehp.jp までご連絡ください（すぐに非公開にします）。";
+
+  for (const { skeleton, industry } of SKELETON_CASES) {
+    const input = baseInput({ industry });
+    for (const sampleSource of ["map", "threads"] as const) {
+      const html = renderSite(input, baseContent, { skeleton, sample: true, sampleSource });
+      assert.ok(html.includes(`<aside class="sample-disclaimer" aria-label="見本について">${expected}</aside>`), `${skeleton}/${sampleSource}: 上部の帯文言が違う`);
+      assert.ok(html.indexOf('class="sample-disclaimer"') > html.indexOf("<body"), `${skeleton}/${sampleSource}: 帯がbody内にない`);
+    }
+    const normalHtml = renderSite(input, baseContent, { skeleton });
+    assert.ok(!normalHtml.includes('class="sample-disclaimer"'), `${skeleton}: 通常サイトに帯が出た`);
+  }
+
+  const kanban = renderSite(baseInput(), baseContent, { skeleton: "看板", sample: true, sampleSource: "map" });
+  assert.ok(kanban.indexOf('class="sample-disclaimer"') < kanban.indexOf("<header"), "帯が看板ヘッダーより後ろにある");
+});
+
+test("見本レンダーは入力由来の外部URL画像をHTMLへ混ぜず、data URI写真だけを描画する", () => {
+  const external = renderSite(
+    baseInput({ photo: "https://example.com/unapproved-photo.jpg" }),
+    baseContent,
+    { skeleton: "看板", sample: true, photoUrl: "https://example.com/unapproved-photo.jpg" },
+  );
+  assert.doesNotMatch(external, /<img\s[^>]*src="https?:\/\//u);
+  assert.ok(!external.includes("og:image"));
+
+  const png24byte = (width: number, height: number): string => {
+    const bytes = [
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+      0x00, 0x00, 0x00, 0x0d,
+      0x49, 0x48, 0x44, 0x52,
+      (width >>> 24) & 0xff, (width >>> 16) & 0xff, (width >>> 8) & 0xff, width & 0xff,
+      (height >>> 24) & 0xff, (height >>> 16) & 0xff, (height >>> 8) & 0xff, height & 0xff,
+    ];
+    return `data:image/png;base64,${btoa(String.fromCharCode(...bytes))}`;
+  };
+  const dataUri = png24byte(120, 80);
+  const allowed = renderSite(baseInput({ photo: dataUri }), baseContent, { skeleton: "看板", sample: true });
+  assert.match(allowed, /<img\s[^>]*src="data:image\/png;base64,/u);
+});
+
 // ---- ④ 看板固有: 必須情報・機能・対応業種・5テーマ・写真3形状 ----
 
 test("看板は店名・キャッチ・連絡先・メニュー・行動ボタン・フッターをすべて表示し、同じ入力から同じHTMLを返す", () => {
@@ -261,7 +303,7 @@ test("看板は店名・キャッチ・連絡先・メニュー・行動ボタ�
 
   const sample = renderSite(input, baseContent, { skeleton: "看板", sample: true });
   assert.ok(sample.includes("紹介文はこちらで仮に書いた"), "見本用の注記が出ていない");
-  assert.ok(sample.includes("90日"), "見本用フッターが出ていない");
+  assert.ok(sample.includes("14日"), "map見本用フッターの14日期限が出ていない");
 });
 
 test("看板の対応業種は飲食店・小売/物販・非店舗3業種・その他", () => {

@@ -6,6 +6,7 @@ import type { SampleSource, SiteInput } from "./validate.ts";
 
 const META_DESCRIPTION_MAX_LENGTH = 120;
 const SITE_NAME = "AIホームページ製作所（RYOSEIWORLD）";
+const SAMPLE_DISCLAIMER_CSS = `.sample-disclaimer{box-sizing:border-box;width:100%;margin:0;padding:.45rem 1rem;background:#eee;color:#444;font-family:system-ui,-apple-system,"Hiragino Sans","Yu Gothic",sans-serif;font-size:.75rem;font-weight:400;line-height:1.65;text-align:center}`;
 
 export interface RenderSiteOptions {
   publicUrl?: string;
@@ -52,7 +53,7 @@ function faviconDataUri(initial: string | null, mark: string): string {
 }
 
 /**
- * renderSite の外形は変えない（index.ts は無改修）。
+ * renderSite の呼び出し形は保つ。
  * 骨格・配色の決定はrender/select.tsへ、材料の組み立てはrender/parts.tsへ委譲し、
  * ここでは <head>・CSP・共通殻の組み立てだけを行う。
  */
@@ -67,16 +68,21 @@ export function renderSite(input: SiteInput, content: GeneratedContent, options:
   const metaDescription = text(truncateText(input.description || input.catchphrase, META_DESCRIPTION_MAX_LENGTH));
   const ogUrl = options.publicUrl ? `\n  <meta property="og:url" content="${text(options.publicUrl)}">` : "";
   // 共有カード（LINE・SNS）に写真を出すには参照可能なURLが要る。data URIでは出せない。
-  const ogImage = options.photoUrl ? `\n  <meta property="og:image" content="${text(options.photoUrl)}">` : "";
-  const twitterCard = options.photoUrl ? "summary_large_image" : "summary";
+  const sharePhotoUrl = ctx.photo ? options.photoUrl : undefined;
+  const ogImage = sharePhotoUrl ? `\n  <meta property="og:image" content="${text(sharePhotoUrl)}">` : "";
+  const twitterCard = sharePhotoUrl ? "summary_large_image" : "summary";
   const robots = options.sample ? `\n  <meta name="robots" content="noindex,nofollow">` : "";
+  const sampleDocumentAttribute = isSample ? ' data-freehp-sample="true"' : "";
+  const sampleDisclaimer = isSample
+    ? `<aside class="sample-disclaimer" aria-label="見本について">これは AIホームページ製作所（freehp.jp）が提案用に作った非公式の見本です。${ctx.storeName}様の公式サイトではなく、承諾も得ていません。掲載を望まれない場合は info@freehp.jp までご連絡ください（すぐに非公開にします）。</aside>\n  `
+    : "";
 
   const rootVars = Object.entries(palette.vars)
     .map(([key, value]) => `--${key}: ${value};`)
     .join(" ");
 
   return `<!doctype html>
-<html lang="ja">
+<html lang="ja"${sampleDocumentAttribute}>
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">${robots}
@@ -91,11 +97,11 @@ export function renderSite(input: SiteInput, content: GeneratedContent, options:
   <title>${ctx.storeName}｜ホームページ</title>
   <style>
     :root { ${rootVars} --photo-aspect: ${frame.aspect}; --photo-max: ${frame.maxWidth}; --dye-max: ${ctx.dyedMaxRem}rem; --name-max: ${ctx.nameMaxRem}rem; }
-    ${skeleton.css}
+    ${skeleton.css}${isSample ? `\n    ${SAMPLE_DISCLAIMER_CSS}` : ""}
   </style>
 </head>
 <body data-型="${skeleton.key}" data-配色="${palette.key}">
-  ${skeleton.body(ctx)}
+  ${sampleDisclaimer}${skeleton.body(ctx)}
 </body>
 </html>`;
 }

@@ -13,6 +13,7 @@ import { quoteDomains } from "./domain/domainPricing.ts";
 import { validateDomainRequest, type DomainRequestInput, type DomainRequestMethod } from "./domain/validateDomainRequest.ts";
 import { countFailedApplications, hashIp, listApplications, recordApplication, toCsv, type D1Database } from "./domain/applications.ts";
 import { enforceAdminRateLimit } from "./domain/adminRateLimit.ts";
+import { sampleTtlSeconds } from "./domain/sample.ts";
 
 interface KvListResult {
   keys: Array<{ name: string }>;
@@ -20,6 +21,7 @@ interface KvListResult {
 
 interface WorkerStore extends RateLimitStore {
   list?: (options: { prefix: string; limit?: number }) => Promise<KvListResult>;
+  delete?: (key: string) => Promise<void>;
 }
 
 export interface Env {
@@ -57,7 +59,6 @@ const ALLOWED_ORIGINS = new Set([
 ]);
 const DEFAULT_BASE_URL = "https://free-hp-engine.ryoseiworld.workers.dev";
 const TOP_PAGE_URL = "https://freehp.jp/";
-const SAMPLE_TTL_SECONDS = 60 * 60 * 24 * 90;
 const MAX_GENERATION_QA_ATTEMPTS = 2;
 
 interface CheckedGeneration {
@@ -120,11 +121,27 @@ function withCors(request: Request, response: Response): Response {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+/** data属性は新規ページ用、robots metaは属性追加前に作った既存見本を安全に配信するための後方互換。 */
+function isSampleHtml(html: string | null): html is string {
+  return html !== null && (
+    html.includes('data-freehp-sample="true"')
+    || html.includes('<meta name="robots" content="noindex,nofollow">')
+  );
+}
+
 async function handleSite(slug: string, env: Env): Promise<Response> {
   const html = await env.SITES.get(`site:${slug}`);
+  const headers: Record<string, string> = {
+    "content-type": "text/html; charset=utf-8",
+    "x-content-type-options": "nosniff",
+  };
+  if (isSampleHtml(html)) {
+    headers["x-robots-tag"] = "noindex, nofollow, noarchive";
+    headers["referrer-policy"] = "no-referrer";
+  }
   return new Response(html, {
     status: html ? 200 : 404,
-    headers: { "content-type": "text/html; charset=utf-8", "x-content-type-options": "nosniff" },
+    headers,
   });
 }
 
@@ -244,7 +261,7 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
     const photoUrl = input.photo ? `${publicUrl}/photo` : undefined;
     // 申込フォームから作られたページに期限は付けない。
     // 1日3件フル稼働でも1年で無料枠の2割ほどしか使わないと実測できたので、消す理由がない。
-    // （もともとの90日は営業用の見本を自動で掃除するための仕組みで、お客さんまで巻き添えにしていた）
+    // （もともとのTTLは営業用の見本を自動で掃除するための仕組みで、お客さんまで巻き添えにしていた）
     if (input.photo) {
       await env.SITES.put(`photo:${slug}`, input.photo);
     }
@@ -628,19 +645,20 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
     }, 502);
   }
   const baseUrl = (env.PUBLIC_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/u, "");
+  const expirationTtl = sampleTtlSeconds(sampleSource);
   try {
     const slug = await createUniqueSlug(env.SITES, input.storeName);
     const publicUrl = `${baseUrl}/s/${slug}`;
     const photoUrl = input.photo ? `${publicUrl}/photo` : undefined;
-    if (input.photo) await env.SITES.put(`photo:${slug}`, input.photo, { expirationTtl: SAMPLE_TTL_SECONDS });
+    if (input.photo) await env.SITES.put(`photo:${slug}`, input.photo, { expirationTtl });
     const html = renderSite(input, content, { publicUrl, photoUrl, sample: true, sampleSource, skeleton: skeletonKey });
-    await env.SITES.put(`site:${slug}`, html, { expirationTtl: SAMPLE_TTL_SECONDS });
+    await env.SITES.put(`site:${slug}`, html, { expirationTtl });
     if (partner) {
       const now = context.now?.() ?? Date.now();
       await env.SITES.put(
         `partner_site:${slug}`,
         JSON.stringify({ key: partner.key, name: partner.name, at: new Date(now).toISOString() }),
-        { expirationTtl: SAMPLE_TTL_SECONDS },
+        { expirationTtl },
       );
       const countKey = `partner_count:${partner.key}:${tokyoDateKey(now).slice(0, 7)}`;
       const storedCount = Number(await env.SITES.get(countKey) ?? "0");
@@ -676,11 +694,48 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
   }
 }
 
+/** 連絡を受けた見本を、その場で公開KVから消す。通常サイトには絶対に使えない。 */
+async function handleSampleUnpublish(request: Request, env: Env): Promise<Response> {
+  const key = request.headers.get("x-batch-key");
+  if (!env.BATCH_KEY && key === null) return json({ error: "not found" }, 404);
+  if (!env.BATCH_KEY || !fullScanEqual(key, env.BATCH_KEY)) {
+    return json({ error: "unauthorized" }, 401);
+  }
+
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await request.text());
+  } catch {
+    return json({ error: "request body must be valid JSON" }, 400);
+  }
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return json({ error: "request body must be a JSON object" }, 400);
+  }
+  const slug = (raw as Record<string, unknown>).slug;
+  if (typeof slug !== "string" || !/^[a-z0-9-]{4,80}$/u.test(slug)) {
+    return json({ error: "slug is invalid" }, 400);
+  }
+
+  const html = await env.SITES.get(`site:${slug}`);
+  if (!html) return json({ error: "sample not found" }, 404);
+  if (!isSampleHtml(html)) return json({ error: "only samples can be unpublished" }, 403);
+  if (!env.SITES.delete) return json({ error: "unpublish service is unavailable" }, 503);
+
+  // 公開本体を先に消し、その後に写真とパートナー用の補助記録を掃除する。
+  await env.SITES.delete(`site:${slug}`);
+  await Promise.all([
+    env.SITES.delete(`photo:${slug}`),
+    env.SITES.delete(`partner_site:${slug}`),
+  ]);
+  return json({ ok: true });
+}
+
 export async function handleRequest(request: Request, env: Env, context: RequestContext = {}): Promise<Response> {
   const url = new URL(request.url);
   if (request.method === "OPTIONS") return withCors(request, new Response(null, { status: 204 }));
   if (url.pathname === "/api/generate" && request.method === "POST") return withCors(request, await handleGenerate(request, env, context));
   if (url.pathname === "/api/sample" && request.method === "POST") return withCors(request, await handleSample(request, env, context));
+  if (url.pathname === "/api/sample/unpublish" && request.method === "POST") return withCors(request, await handleSampleUnpublish(request, env));
   if (url.pathname === "/api/domain-request" && request.method === "POST") return withCors(request, await handleDomainRequest(request, env, context));
   if (url.pathname === "/api/domain-requests" && request.method === "GET") return withCors(request, await handleDomainRequests(request, env));
   if (url.pathname === "/api/admin/applications" && request.method === "GET") return withCors(request, await handleAdminApplications(request, env, context));

@@ -1,6 +1,7 @@
 import type { GeneratedContent } from "../../generation/provider.ts";
 import { readImageSize, type ImageSize, type PhotoShape } from "../imageSize.ts";
 import type { Industry, SampleSource, SiteInput } from "../validate.ts";
+import { sampleTtlDays } from "../sample.ts";
 import { pickIndex, seedOf } from "./hash.ts";
 import { buildHeadline } from "./headline.ts";
 import { resolveVenueKind, venueNoun, type VenueKind } from "./venue.ts";
@@ -377,9 +378,12 @@ export function resolvePhotoFrame(input: SiteInput): { aspect: string; maxWidth:
   return PHOTO_FRAME[photoShapeFor(readImageSize(input.photo ?? ""))];
 }
 
-/** 写真が無ければ null。photoUrl があればそれを、無ければdata URIそのものを参照する。 */
-export function buildPhotoInfo(input: SiteInput, photoUrl: string | undefined): PhotoInfo | null {
+const PHOTO_DATA_URI_PATTERN = /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/]+={0,2}$/u;
+
+/** 写真が無ければ null。見本は、検証済み経路を迂回されても外部URL画像を描画しない。 */
+export function buildPhotoInfo(input: SiteInput, photoUrl: string | undefined, isSample = false): PhotoInfo | null {
   if (!input.photo) return null;
+  if (isSample && !PHOTO_DATA_URI_PATTERN.test(input.photo)) return null;
   const frame = resolvePhotoFrame(input);
   const src = photoUrl ?? input.photo;
   return {
@@ -390,19 +394,23 @@ export function buildPhotoInfo(input: SiteInput, photoUrl: string | undefined): 
   };
 }
 
-// ---- 共通の定型文（骨格をまたいでも一字一句変えない） ----
+// ---- 骨格をまたいで共通にする定型文 ----
 
-/** フッター文言は一字も変えない（既存テスト1件）。 */
 /**
  * ページ下部の署名。見本（sample）と、お客さんが自分で作ったページで内容を変える。
- * 見本は「連絡がなければ90日で消える」、申込ページは「期限なし」＝実装（KVのTTL有無）と一致させる。
+ * 見本は元ネタ別の期限で消え、申込ページは「期限なし」＝実装（KVのTTL有無）と一致させる。
  */
-export function footerHtml(isSample: boolean, venueKind: VenueKind = "shop"): string {
+export function footerHtml(
+  isSample: boolean,
+  venueKind: VenueKind = "shop",
+  sampleSource: SampleSource = "map",
+): string {
   const contact = 'info@freehp.jp';
   const mail = `<a href="mailto:${contact}">${contact}</a>（<a href="https://freehp.jp/">freehp.jp</a>）`;
   const noun = venueNoun(venueKind);
+  const ttlDays = sampleTtlDays(sampleSource);
   return isSample
-    ? `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま90日たつと、自動的に非公開になります。気に入っていただけたら、そのまま${noun}のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（この${noun}へのお問い合わせ窓口ではありません）：${mail}`
+    ? `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま${ttlDays}日たつと、自動的に非公開になります。気に入っていただけたら、そのまま${noun}のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（この${noun}へのお問い合わせ窓口ではありません）：${mail}`
     : `このホームページは、AIホームページ製作所（RYOSEIWORLD）で作りました。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（この${noun}へのお問い合わせ窓口ではありません）：${mail}`;
 }
 
@@ -413,7 +421,7 @@ export function footerHtml(isSample: boolean, venueKind: VenueKind = "shop"): st
 const SAMPLE_NOTICE_BY_SOURCE: Readonly<Record<SampleSource, (noun: string) => string>> = {
   map: (noun) => `このページは、地図サービスの公開情報だけを使って作った<strong>見本</strong>です。紹介文はこちらで仮に書いたもので、${noun}に伺って書いたものではありません。ご連絡いただければ、${noun}の言葉に書き直してお渡しします。`,
   threads: () =>
-    "このページは、Threadsでのご投稿を拝見して、こちらで仮に作った<strong>見本</strong>です。名前や内容は仮のもので、ご連絡いただければ本物に作り直してお渡しします。ご連絡がなければ90日で自動的に消えます。",
+    `このページは、Threadsでのご投稿を拝見して、こちらで仮に作った<strong>見本</strong>です。名前や内容は仮のもので、ご連絡いただければ本物に作り直してお渡しします。ご連絡がなければ${sampleTtlDays("threads")}日で自動的に消えます。`,
 };
 
 export function sampleNoticeOf(source: SampleSource, venueKind: VenueKind = "shop"): string {
@@ -471,8 +479,9 @@ export function buildSkeletonContext(
     word: word ? escapeHtml(word) : "",
     contactRows: buildContactRows(input),
     actions: buildActions(input),
-    photo: buildPhotoInfo(input, photoUrl),
+    photo: buildPhotoInfo(input, photoUrl, isSample),
     isSample,
+    sampleSource,
     sampleNoticeHtml: isSample ? sampleNoticeOf(sampleSource, venueKind) : "",
     palette,
   };

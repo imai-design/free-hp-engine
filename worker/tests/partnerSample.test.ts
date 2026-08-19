@@ -34,7 +34,7 @@ const generated = {
 const stubProvider = async () => generated;
 const PARTNER_KEY = "partner-secret-key";
 const NOW = Date.UTC(2026, 7, 7, 3, 0, 0);
-const NINETY_DAYS = 60 * 60 * 24 * 90;
+const FOURTEEN_DAYS = 60 * 60 * 24 * 14;
 
 function sampleRequest(key: string): Request {
   return new Request("https://example.com/api/sample", {
@@ -52,7 +52,7 @@ function testEnv(store: MemoryKv, batchKey?: string) {
   };
 }
 
-test("有効なパートナー鍵で生成でき、作成者記録を90日保存する", async () => {
+test("有効なパートナー鍵でmap見本を生成でき、作成者記録を14日保存する", async () => {
   const store = new MemoryKv();
   await store.put(`partner:${PARTNER_KEY}`, JSON.stringify({ name: "かえるパートナー", active: true }));
 
@@ -69,7 +69,7 @@ test("有効なパートナー鍵で生成でき、作成者記録を90日保存
     name: "かえるパートナー",
     at: "2026-08-07T03:00:00.000Z",
   });
-  assert.equal(store.ttls.get(`partner_site:${slug}`), NINETY_DAYS);
+  assert.equal(store.ttls.get(`partner_site:${slug}`), FOURTEEN_DAYS);
 });
 
 test("active:false のパートナー鍵は401", async () => {

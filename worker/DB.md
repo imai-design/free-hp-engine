@@ -39,7 +39,7 @@ cat ~/.freehp-admin-key
 | 用途 | ファイル | 備考 |
 |---|---|---|
 | 管理用一覧・CSVエクスポートの鍵 | `~/.freehp-admin-key` | `wrangler secret put ADMIN_KEY` で本番に設定済み。chmod 600 |
-| 見本生成（`/api/sample`）の合鍵 | `~/.freehp-batch-key` | 既存。今回のD1追加とは無関係 |
+| 見本生成・削除（`/api/sample`, `/api/sample/unpublish`）の合鍵 | `~/.freehp-batch-key` | 既存。今回のD1追加とは無関係 |
 
 鍵を作り直したいとき（漏れた・ローテーションしたい）：
 
@@ -50,11 +50,27 @@ cat ~/.freehp-admin-key | npx wrangler secret put ADMIN_KEY
 npx wrangler deploy
 ```
 
+## 見本の安全策
+
+`sampleSource=map` / `threads` の見本は、最上部の帯で「AIホームページ製作所が提案用に作った非公式・未承認の見本」であることと、`info@freehp.jp` の削除窓口を明示する。検索・共有時の誤認を減らすため、robots metaに加えて配信レスポンスへ `X-Robots-Tag: noindex, nofollow, noarchive` と `Referrer-Policy: no-referrer` を付ける。画像入力はJPEG・PNG・WebPのdata URIだけを許可し、外部URL画像は拒否する。
+
+KVの自動失効は、接点のない地図由来（`map`）が14日、本人の要望投稿を起点とするThreads由来（`threads`）が90日。`site:`・`photo:`・`partner_site:`へ同じTTLを付け、ページ下部に表示する日数もこの値から生成する。申込フォーム経由の通常サイトにはTTLを付けない。
+
+掲載停止の連絡を受けた場合は、見本生成と同じ合鍵で次を実行する。見本だけをKVから即時削除し、通常サイトなら403を返して残す。
+
+```bash
+curl -X POST \
+  -H "content-type: application/json" \
+  -H "x-batch-key: $(cat ~/.freehp-batch-key)" \
+  --data '{"slug":"削除する見本のslug"}' \
+  "https://free-hp-engine.ryoseiworld.workers.dev/api/sample/unpublish"
+```
+
 ## テーブル定義
 
 `migrations/0001_applications.sql`〜`0004_partner_key_hash.sql`。主な列:
 
-- `kind`: `site`（申込フォームからの本番サイト生成）／ `sample`（営業用見本・90日で自動失効）／ `domain_request`（独自ドメイン取得申込）
+- `kind`: `site`（申込フォームからの本番サイト生成）／ `sample`（営業用見本・mapは14日、threadsは90日で自動失効）／ `domain_request`（独自ドメイン取得申込）
 - 店舗情報: `store_name` `business_type` `description` `catchcopy` `mood` `phone` `address` `hours` `menu_text` `reserve_url` `instagram` `line_official` `has_photo`
 - 申込者: `owner_email` `owner_sub`（Googleログイン時のみ）
 - 送信元: `ip_hash`（生IPは保存しない。SHA-256先頭16桁）`user_agent`

@@ -92,6 +92,8 @@ export interface SkeletonContext {
   readonly actions: readonly ActionLink[];
   readonly photo: PhotoInfo | null;
   readonly isSample: boolean;
+  /** 見本の保存期限・断り書きを一致させるための元ネタ区分。 */
+  readonly sampleSource: SampleSource;
   /** 見本ページ下部の断り書き（sampleNoticeOf由来）。isSampleがfalseなら ""。 */
   readonly sampleNoticeHtml: string;
   readonly palette: Palette;

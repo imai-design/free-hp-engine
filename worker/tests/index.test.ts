@@ -8,6 +8,7 @@ class MemoryKv {
   values = new Map<string, string>();
   async get(key: string): Promise<string | null> { return this.values.get(key) ?? null; }
   async put(key: string, value: string): Promise<void> { this.values.set(key, value); }
+  async delete(key: string): Promise<void> { this.values.delete(key); }
 }
 
 const validInput = {
@@ -70,6 +71,33 @@ test("HEAD /s/{slug}: GETと同じ200・HTMLヘッダーで空ボディを返す
   assert.equal(missingHead.status, missingGet.status);
   assert.deepEqual(Object.fromEntries(missingHead.headers), Object.fromEntries(missingGet.headers));
   assert.equal(await missingHead.text(), "");
+});
+
+test("見本ページのGET/HEADだけX-Robots-TagとReferrer-Policyを返す", async () => {
+  const store = new MemoryKv();
+  const testEnv = { ...env(store), BATCH_KEY: "correct-key" };
+  const sampleCreated = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify(validInput),
+    }),
+    testEnv,
+    { generate: stubProvider },
+  );
+  const normalCreated = await handleRequest(request({ ...validInput, storeName: "通常サイト" }), testEnv, { generate: stubProvider });
+  const { url: sampleUrl } = await sampleCreated.json() as { url: string };
+  const { url: normalUrl } = await normalCreated.json() as { url: string };
+
+  for (const method of ["GET", "HEAD"]) {
+    const sample = await handleRequest(new Request(sampleUrl, { method }), testEnv);
+    assert.equal(sample.headers.get("x-robots-tag"), "noindex, nofollow, noarchive", `${method}: 見本のX-Robots-Tagが違う`);
+    assert.equal(sample.headers.get("referrer-policy"), "no-referrer", `${method}: 見本のReferrer-Policyが違う`);
+
+    const normal = await handleRequest(new Request(normalUrl, { method }), testEnv);
+    assert.equal(normal.headers.get("x-robots-tag"), null, `${method}: 通常サイトにX-Robots-Tagが付いた`);
+    assert.equal(normal.headers.get("referrer-policy"), null, `${method}: 通常サイトにReferrer-Policyが付いた`);
+  }
 });
 
 test("GET / と HEAD /: freehp.jpへ302転送する", async () => {
@@ -530,6 +558,22 @@ test("見本はnoindexと「仮の文章」の断りつきで作られ、回数�
   assert.match(html, /<meta name="robots" content="noindex,nofollow">/u);
 });
 
+test("見本APIは外部URL画像を拒否し、HTMLも画像も保存しない", async () => {
+  const store = new MemoryKv();
+  const response = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, photo: "https://example.com/unapproved-photo.jpg" }),
+    }),
+    { ...env(store), BATCH_KEY: "correct-key" },
+    { generate: stubProvider },
+  );
+
+  assert.equal(response.status, 400);
+  assert.equal([...store.values.keys()].some((key) => key.startsWith("site:") || key.startsWith("photo:")), false);
+});
+
 // ---- 見本の断り書き文言の出し分け（2026-08-18追加：sampleSource） ----
 
 test("sampleSourceを省略すると従来どおり「地図サービスの公開情報」の断り書きになる（後方互換）", async () => {
@@ -638,6 +682,49 @@ test("申込フォーム経由のページにはnoindexを付けない", async (
   assert.ok(!(store.values.get(`site:${slug}`) as string).includes("noindex"));
 });
 
+test("POST /api/sample/unpublishは合鍵で見本だけを即時削除し、通常サイトは403で残す", async () => {
+  const store = new MemoryKv();
+  const testEnv = { ...env(store), BATCH_KEY: "correct-key" };
+  const sampleCreated = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify(validInput),
+    }),
+    testEnv,
+    { generate: stubProvider },
+  );
+  const normalCreated = await handleRequest(request({ ...validInput, storeName: "残す通常サイト" }), testEnv, { generate: stubProvider });
+  const { slug: sampleSlug } = await sampleCreated.json() as { slug: string };
+  const { slug: normalSlug } = await normalCreated.json() as { slug: string };
+  await store.put(`photo:${sampleSlug}`, "sample photo");
+  await store.put(`partner_site:${sampleSlug}`, "sample partner record");
+
+  const callUnpublish = (slug: string, key: string) => handleRequest(
+    new Request("https://example.com/api/sample/unpublish", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-batch-key": key },
+      body: JSON.stringify({ slug }),
+    }),
+    testEnv,
+  );
+
+  const unauthorized = await callUnpublish(sampleSlug, "wrong-key");
+  assert.equal(unauthorized.status, 401);
+  assert.ok(await store.get(`site:${sampleSlug}`), "認証失敗で見本が消えた");
+
+  const normal = await callUnpublish(normalSlug, "correct-key");
+  assert.equal(normal.status, 403);
+  assert.ok(await store.get(`site:${normalSlug}`), "通常サイトが削除された");
+
+  const sample = await callUnpublish(sampleSlug, "correct-key");
+  assert.equal(sample.status, 200);
+  assert.deepEqual(await sample.json(), { ok: true });
+  assert.equal(await store.get(`site:${sampleSlug}`), null);
+  assert.equal(await store.get(`photo:${sampleSlug}`), null);
+  assert.equal(await store.get(`partner_site:${sampleSlug}`), null);
+});
+
 // ---- Googleアカウントでの登録制（2026-08-05追加）----
 
 import { consumeDailyQuota, tokyoDateKey, UserQuotaError } from "../src/domain/userQuota.ts";
@@ -708,7 +795,7 @@ test("preflightがauthorizationヘッダを許可する（ログイン付きfetc
   assert.ok(allowed.includes("authorization"), `authorizationが許可されていない: ${allowed}`);
 });
 
-test("申込ページはKVに期限を付けない／見本は90日で消える（文言と実装の一致）", async () => {
+test("申込ページはTTLなし／map見本は14日／threads見本は90日（文言と実装の一致）", async () => {
   const kv = new MemoryKv();
   const ttls: Record<string, number | undefined> = {};
   const spy = {
@@ -729,9 +816,25 @@ test("申込ページはKVに期限を付けない／見本は90日で消える�
       method: "POST", headers: { "x-batch-key": "correct-key" }, body: JSON.stringify(validInput),
     }),
     { ...env(spy), BATCH_KEY: "correct-key" }, { generate: stubProvider });
-  const { slug: sample } = await b.json() as { slug: string };
-  assert.equal(ttls[`site:${sample}`], 60 * 60 * 24 * 90, "見本の90日期限が消えている");
-  const sampleHtml = await kv.get(`site:${sample}`) as string;
-  assert.ok(sampleHtml.includes("90日たつと"));
-  assert.ok(sampleHtml.includes("期限なしで公開します"));
+  const { slug: mapSample } = await b.json() as { slug: string };
+  assert.equal(ttls[`site:${mapSample}`], 60 * 60 * 24 * 14, "map見本の14日期限が違う");
+  const mapHtml = await kv.get(`site:${mapSample}`) as string;
+  assert.ok(mapHtml.includes("14日たつと"));
+  assert.ok(!mapHtml.includes("90日たつと"));
+  assert.ok(mapHtml.includes("期限なしで公開します"));
+
+  const c = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, storeName: "Threads見本", sampleSource: "threads" }),
+    }),
+    { ...env(spy), BATCH_KEY: "correct-key" },
+    { generate: stubProvider },
+  );
+  const { slug: threadsSample } = await c.json() as { slug: string };
+  assert.equal(ttls[`site:${threadsSample}`], 60 * 60 * 24 * 90, "threads見本の90日期限が違う");
+  const threadsHtml = await kv.get(`site:${threadsSample}`) as string;
+  assert.ok(threadsHtml.includes("90日たつと"));
+  assert.ok(!threadsHtml.includes("14日たつと"));
 });

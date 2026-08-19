@@ -278,7 +278,7 @@ function body(ctx: SkeletonContext): string {
   <section class="panel"><h2>${headings.closing}</h2><p>${ctx.closing}</p>${renderActionLinks(ctx.actions, "actions", "action")}</section>
   ${contactSection(ctx)}
 </main>
-<footer><div class="wrap">${footerHtml(ctx.isSample, ctx.venueKind)}</div></footer>`;
+<footer><div class="wrap">${footerHtml(ctx.isSample, ctx.venueKind, ctx.sampleSource)}</div></footer>`;
 }
 
 export const KANBAN: Skeleton = {

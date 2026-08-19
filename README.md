@@ -18,8 +18,22 @@ RYOSEIWORLD のミッションは「ITを全て無料にする」ことです。
 - **5つの骨格（デザインテンプレート）を店名のハッシュから決定的に出し分け** — 名刺・暖簾・短冊・方眼・看板の5型（`worker/src/domain/render/skeletons/`）。同じ店名・住所なら何度作っても同じ骨格・配色になり、チェーン店が近い場所で作り直しても同じ見た目に寄る対策も入っています。
 - **見出しは事実から決定的に生成** — AIに書かせるのは紹介文の一部だけで、見出し（headline）は入力された事実（店名・地域・業種語）から機械的に組み立てます。「無い事実は作らない」を設計の柱にしています。
 - **WCAG AA準拠** — 全骨格・全配色の組み合わせで、本文色・補助色・見出し色のコントラスト比 4.5:1 を自動テストで担保しています。
-- **テスト109件** — `node --test`（Node標準のテストランナー）でユニットテストを実行します。決定論性・XSS対策（骨格側はエスケープ済み文字列しか受け取らない設計）・入力検証・コントラスト比などをカバーしています。
+- **テスト188件** — `node --test`（Node標準のテストランナー）でユニットテストを実行します。決定論性・XSS対策（骨格側はエスケープ済み文字列しか受け取らない設計）・入力検証・コントラスト比などをカバーしています。
 - **APIキー不要でも動く** — `ANTHROPIC_API_KEY` を設定しなければ、自動的に Cloudflare Workers AI（無料枠・キー不要）にフォールバックします。
+
+## 見本の安全策
+
+`POST /api/sample` で作る提案用見本（`sampleSource: "map" | "threads"`）は、ページ最上部に「非公式・未承認で、事業者の公式サイトではない」ことを示す帯と削除窓口を表示する。HTMLのrobots metaに加え、配信時にも `X-Robots-Tag: noindex, nofollow, noarchive` と `Referrer-Policy: no-referrer` を返す。入力画像はJPEG・PNG・WebPのdata URIだけを受け付け、外部URL画像は保存・描画しない。
+
+KVのTTLは、接点のない地図由来（`map`）が14日、本人の要望投稿を起点とするThreads由来（`threads`）が90日。申込フォームから本人が作った通常サイトにはTTLを付けない。掲載停止の連絡を受けたら、見本生成と同じ `BATCH_KEY` で次を実行すると、見本本体・写真・パートナー補助記録をKVから削除できる。通常サイトを指定した場合は403になり、削除しない。
+
+```bash
+curl -X POST \
+  -H "content-type: application/json" \
+  -H "x-batch-key: $(cat ~/.freehp-batch-key)" \
+  --data '{"slug":"削除する見本のslug"}' \
+  "https://free-hp-engine.ryoseiworld.workers.dev/api/sample/unpublish"
+```
 
 ## 動かし方（ローカル）
 

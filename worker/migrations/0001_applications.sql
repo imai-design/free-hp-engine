@@ -3,7 +3,7 @@
 CREATE TABLE IF NOT EXISTS applications (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   created_at TEXT NOT NULL,
-  -- 'site' = 申込フォームからの本番サイト生成 / 'sample' = 営業用見本(90日で自動失効) / 'domain_request' = 独自ドメイン取得申込
+  -- 'site' = 申込フォームからの本番サイト生成 / 'sample' = 営業用見本(mapは14日・threadsは90日で自動失効) / 'domain_request' = 独自ドメイン取得申込
   kind TEXT NOT NULL CHECK (kind IN ('site', 'domain_request', 'sample')),
   slug TEXT,
   public_url TEXT,

@@ -216,7 +216,7 @@ function body(ctx: SkeletonContext): string {
     ${actions}
     ${contact}
   </article>
-  <footer>${footerHtml(ctx.isSample, ctx.venueKind)}</footer>
+  <footer>${footerHtml(ctx.isSample, ctx.venueKind, ctx.sampleSource)}</footer>
 </main>`;
 }
 

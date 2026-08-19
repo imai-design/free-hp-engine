@@ -228,7 +228,7 @@ ${photo}
   ${renderActionLinks(ctx.actions, "actions", "action")}
   ${contactSection(ctx)}
 </main>
-<footer class="shikiishi"><div class="wrap">${footerHtml(ctx.isSample, ctx.venueKind)}</div></footer>`;
+<footer class="shikiishi"><div class="wrap">${footerHtml(ctx.isSample, ctx.venueKind, ctx.sampleSource)}</div></footer>`;
 }
 
 export const NOREN: Skeleton = {
