@@ -174,35 +174,31 @@ def classify_industry(industry: str) -> tuple[str, str]:
 
 
 def _markdown_rows(markdown: str) -> list[dict[str, str]]:
+    # 複数の表（業種ごとの「候補一覧」節）を全部読む。ヘッダ行が現れるたびに列を取り直す。
     lines = markdown.splitlines()
-    header_index = -1
-    headers: list[str] = []
-    for index, line in enumerate(lines):
-        cells = [_plain_markdown(cell) for cell in _split_markdown_row(line)]
-        if "名称" in cells and "代表メール" in cells:
-            header_index = index
-            headers = cells
-            break
-    if header_index < 0:
-        raise PipelineError("必要な列（名称・代表メール）を含むMarkdown表が見つかりません")
-
     rows: list[dict[str, str]] = []
-    started = False
-    for line in lines[header_index + 1 :]:
+    headers: list[str] = []
+    found_header = False
+    for line in lines:
+        cells_plain = [_plain_markdown(cell) for cell in _split_markdown_row(line)]
+        if "名称" in cells_plain and "代表メール" in cells_plain:
+            headers = cells_plain
+            found_header = True
+            continue
+        if not headers:
+            continue
         if not line.strip():
-            if started:
-                break
+            headers = []  # 表の終わり。次のヘッダまで読み飛ばす
             continue
         cells = _split_markdown_row(line)
         if _is_separator_row(cells):
             continue
         if len(cells) < 2:
-            if started:
-                break
             continue
-        started = True
         cells.extend([""] * (len(headers) - len(cells)))
         rows.append(dict(zip(headers, cells[: len(headers)])))
+    if not found_header:
+        raise PipelineError("必要な列（名称・代表メール）を含むMarkdown表が見つかりません")
     return rows
 
 
