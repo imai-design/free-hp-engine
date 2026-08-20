@@ -282,12 +282,49 @@ class SaiyoPipelineTest(unittest.TestCase):
         description = pipeline.build_generic_description("船橋市", "建設会社")
         self.assertEqual(
             description,
-            "船橋市で建設・土木工事を手がける会社の見本ページです。"
-            "実際の会社名・写真・文章は、お話をうかがってから入れ替えます。",
+            "船橋市を中心に、土木工事と建築工事を手がける建設会社です。"
+            "道路や上下水道などの土木工事から、建物にともなう鳶・鍛冶工事まで対応しています。",
         )
         self.assertIsNone(re.search(r"\d", description))  # 創業年など相手固有の数字が入らない
         for forbidden in pipeline.FORBIDDEN_SAMPLE_WORDS:
             self.assertNotIn(forbidden, description)
+        # 「見本」「実際の会社名」等のメタ文はエンジン側QAに「事業内容と対応していない」と
+        # 弾かれるHTTP 422の原因だったため、業種の紹介文にはメタ文を一切含めない。
+        self.assertNotIn("見本", description)
+        self.assertNotIn("実際の会社名", description)
+
+    def test_build_generic_description_per_industry(self):
+        cases = {
+            "運送会社": (
+                "浦安市に拠点を置き、一般貨物の運送を手がける運送会社です。"
+                "企業向けの定期便やスポット便のほか、倉庫での保管・仕分けにも対応しています。"
+            ),
+            "倉庫会社": (
+                "浦安市に拠点を置き、一般貨物の運送を手がける運送会社です。"
+                "企業向けの定期便やスポット便のほか、倉庫での保管・仕分けにも対応しています。"
+            ),
+            "介護事業所": (
+                "浦安市で高齢者向けの介護サービスを行う事業所です。"
+                "デイサービスや訪問介護を通じて、住み慣れた地域で暮らし続けられるよう支えています。"
+            ),
+            "システム開発会社": (
+                "浦安市に拠点を置き、業務システムの受託開発を手がける会社です。"
+                "要件の整理から設計・開発・保守まで一貫して対応しています。"
+            ),
+            "製造会社": (
+                "浦安市に工場を構え、金属部品の加工・製造を手がける会社です。"
+                "試作から量産まで、図面にもとづく加工に対応しています。"
+            ),
+            "特殊会社": (
+                "浦安市に拠点を置く会社です。地域のお客さまに向けて、日々の仕事を丁寧に続けています。"
+            ),
+        }
+        for industry_label, expected in cases.items():
+            with self.subTest(industry_label=industry_label):
+                description = pipeline.build_generic_description("浦安市", industry_label)
+                self.assertEqual(description, expected)
+                self.assertNotIn("見本", description)
+                self.assertNotIn("実際の会社名", description)
 
     def test_anonymized_sample_payload_excludes_real_name_and_facts(self):
         lead = {

@@ -53,20 +53,45 @@ KAMEI_WORDS: dict[str, str] = {
 }
 DEFAULT_KAMEI_WORD = "サービス"
 
-# 業種ラベル → 説明文に使う一般的な仕事内容（相手固有の事実は含めない）。
-INDUSTRY_TASKS: dict[str, str] = {
-    "建設会社": "建設・土木工事",
-    "運送会社": "運送・配送の仕事",
-    "介護事業所": "介護サービス",
-    "システム開発会社": "システム開発",
-    "製造会社": "ものづくり",
-    "医療機関": "医療サービス",
-    "警備会社": "警備業務",
-    "清掃会社": "清掃業務",
-    "人材会社": "人材サービス",
-    "販売会社": "販売業務",
-}
-DEFAULT_INDUSTRY_TASK = "地域の仕事"
+# 2026-08-20〜: HTTP 422「生成内容が事業内容と対応していない」対策で、
+# 「見本ページです」等のメタ文をやめ、業種ごとのふつうの会社紹介文（2文）に変更した。
+# 業種ラベル（classify_industry由来の語）にマッチする語 → 会社紹介文テンプレート。
+# {municipality} だけを埋める。相手固有の事実（創業年・取引先・許認可番号・社名）は入れない。
+GENERIC_DESCRIPTION_RULES: tuple[tuple[re.Pattern[str], str], ...] = (
+    (
+        re.compile(r"介護"),
+        "{municipality}で高齢者向けの介護サービスを行う事業所です。"
+        "デイサービスや訪問介護を通じて、住み慣れた地域で暮らし続けられるよう支えています。",
+    ),
+    (
+        re.compile(r"運送|倉庫|物流|運輸"),
+        "{municipality}に拠点を置き、一般貨物の運送を手がける運送会社です。"
+        "企業向けの定期便やスポット便のほか、倉庫での保管・仕分けにも対応しています。",
+    ),
+    (
+        re.compile(r"設備|管工事|電気"),
+        "{municipality}を中心に、給排水・空調・電気などの設備工事を手がける会社です。"
+        "新築の設備工事から、既存の建物の改修・修繕まで対応しています。",
+    ),
+    (
+        re.compile(r"建設|土木|工務店|建築|解体|内装|塗装"),
+        "{municipality}を中心に、土木工事と建築工事を手がける建設会社です。"
+        "道路や上下水道などの土木工事から、建物にともなう鳶・鍛冶工事まで対応しています。",
+    ),
+    (
+        re.compile(r"システム|情報|ソフトウェア|IT|ＩＴ|ウェブ|Web", re.IGNORECASE),
+        "{municipality}に拠点を置き、業務システムの受託開発を手がける会社です。"
+        "要件の整理から設計・開発・保守まで一貫して対応しています。",
+    ),
+    (
+        re.compile(r"製造|製作所|工業"),
+        "{municipality}に工場を構え、金属部品の加工・製造を手がける会社です。"
+        "試作から量産まで、図面にもとづく加工に対応しています。",
+    ),
+)
+DEFAULT_GENERIC_DESCRIPTION = (
+    "{municipality}に拠点を置く会社です。地域のお客さまに向けて、日々の仕事を丁寧に続けています。"
+)
 
 
 class PipelineError(RuntimeError):
@@ -633,12 +658,16 @@ def kamei_store_name(industry_label: str) -> str:
 
 
 def build_generic_description(municipality: str, industry_label: str) -> str:
-    """相手固有の事実（創業年・取引先・許認可番号等）を含まない一般的な説明文を作る。"""
-    task = INDUSTRY_TASKS.get(industry_label) or f"{_kamei_word(industry_label)}の仕事"
-    return (
-        f"{municipality}で{task}を手がける会社の見本ページです。"
-        "実際の会社名・写真・文章は、お話をうかがってから入れ替えます。"
-    )
+    """相手固有の事実（創業年・取引先・許認可番号等）を含まない、業種ごとのふつうの会社紹介文を作る。
+
+    「見本ページです」「実際の会社名は入れ替えます」といったメタ文は入れない
+    （見本である旨はページ上部の帯とフッターに既に出ているため）。生成内容が
+    業種と対応していないとエンジン側QAに弾かれるHTTP 422対策。
+    """
+    for pattern, template in GENERIC_DESCRIPTION_RULES:
+        if pattern.search(industry_label):
+            return template.format(municipality=municipality)
+    return DEFAULT_GENERIC_DESCRIPTION.format(municipality=municipality)
 
 
 def sample_png_path(municipality: str, industry_label: str, output_dir: str | Path = SAMPLES_PNG_DIR) -> Path:
