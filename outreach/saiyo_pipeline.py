@@ -98,6 +98,16 @@ def _extract_email(value: str) -> str:
     return match.group(0).lower() if match else ""
 
 
+def _ascii_url_prefix(value: str) -> str:
+    """URL候補の先頭からASCII印字可能文字が連続する部分だけを取り出す。
+
+    表セルに「http://example.com/（https://は証明書期限切れで接続不可」のような
+    日本語の注記が空白なしで続くと、素朴な非空白マッチではURLに混入する。
+    """
+    match = re.match(r"[\x21-\x7e]*", value)
+    return match.group(0) if match else ""
+
+
 def _extract_url(value: str) -> str:
     decoded = html.unescape(value).strip()
     markdown_link = re.search(r"\]\((https?://[^\s)]+)", decoded, re.IGNORECASE)
@@ -106,6 +116,7 @@ def _extract_url(value: str) -> str:
     if not candidate:
         return ""
     url = candidate.group(1) if markdown_link else candidate.group(0)
+    url = _ascii_url_prefix(url)
     url = url.rstrip(".,;:、。）」〉》]")
     try:
         parsed = urllib.parse.urlsplit(url)

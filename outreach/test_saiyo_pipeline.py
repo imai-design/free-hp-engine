@@ -77,6 +77,23 @@ class SaiyoPipelineTest(unittest.TestCase):
         self.assertEqual(lead["note"], "")
         self.assertEqual(self.read_leads(), leads)
 
+    def test_parse_strips_japanese_note_from_url_cells(self):
+        markdown = """\
+| # | 名称 | 業種 | 所在地 | 公式URL | 代表メール | メールの根拠URL | 営業拒否表示 | 求人シグナル | HPの困りごと | 規模 | HTTP確認 |
+|---:|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | **誠和電工株式会社** | 電気工事業 | 神奈川県川崎市 | http://www.seiwabeatle.com/（https://は証明書期限切れで接続不可 | uketsuke_info@seiwaweb.jp | http://www.seiwabeatle.com/saiyou.html（こちらでも直接grep再確認済み | なし | 現場監督を募集中 | 採用ページへの導線がない | 30名 | 200 |
+"""
+        source = self.root / "candidates.md"
+        source.write_text(markdown, encoding="utf-8")
+
+        with contextlib.redirect_stdout(io.StringIO()):
+            leads = pipeline.parse_markdown(source, self.leads_path)
+
+        self.assertEqual(len(leads), 1)
+        lead = leads[0]
+        self.assertEqual(lead["url"], "http://www.seiwabeatle.com/")
+        self.assertEqual(lead["evidence_url"], "http://www.seiwabeatle.com/saiyou.html")
+
     def test_fill_desc_builds_two_sentences_and_skips_failure(self):
         self.write_leads(
             [
