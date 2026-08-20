@@ -2,6 +2,7 @@ import contextlib
 import datetime as dt
 import io
 import json
+import re
 import tempfile
 import unittest
 import urllib.error
@@ -259,6 +260,168 @@ class SaiyoPipelineTest(unittest.TestCase):
             summary = pipeline.show_status(self.leads_path)
 
         self.assertEqual(summary, {"total": 3, "described": 2, "sampled": 1, "pushed": 1, "errors": 2})
+
+    # --- 2026-08-20〜: 仮名見本＋PNG撮影方式（相手の社名を使った見本の無断公開への抗議を受けて追加） ---
+
+    def test_kamei_store_name_never_contains_real_name(self):
+        self.assertEqual(pipeline.kamei_store_name("建設会社"), "◯◯建設（見本）")
+        self.assertEqual(pipeline.kamei_store_name("運送会社"), "◯◯運送（見本）")
+        self.assertEqual(pipeline.kamei_store_name("介護事業所"), "◯◯ケアサービス（見本）")
+        self.assertEqual(pipeline.kamei_store_name("システム開発会社"), "◯◯システム（見本）")
+        self.assertEqual(pipeline.kamei_store_name("製造会社"), "◯◯製作所（見本）")
+        # KAMEI_WORDSに無いラベルでも「会社」を機械的に外すだけで、相手の実名を渡す入口がない。
+        self.assertEqual(pipeline.kamei_store_name("特殊会社"), "◯◯特殊（見本）")
+
+    def test_split_catchphrase_extracts_municipality_and_label(self):
+        self.assertEqual(pipeline.split_catchphrase("江戸川区の建設会社"), ("江戸川区", "建設会社"))
+        self.assertEqual(pipeline.split_catchphrase("船橋市の運送会社"), ("船橋市", "運送会社"))
+        self.assertEqual(pipeline.split_catchphrase(""), ("", ""))
+        self.assertEqual(pipeline.split_catchphrase("形式不正"), ("", ""))
+
+    def test_build_generic_description_has_no_lead_specific_facts(self):
+        description = pipeline.build_generic_description("船橋市", "建設会社")
+        self.assertEqual(
+            description,
+            "船橋市で建設・土木工事を手がける会社の見本ページです。"
+            "実際の会社名・写真・文章は、お話をうかがってから入れ替えます。",
+        )
+        self.assertIsNone(re.search(r"\d", description))  # 創業年など相手固有の数字が入らない
+        for forbidden in pipeline.FORBIDDEN_SAMPLE_WORDS:
+            self.assertNotIn(forbidden, description)
+
+    def test_anonymized_sample_payload_excludes_real_name_and_facts(self):
+        lead = {
+            "name": "有限会社小田原建設",
+            "storeName": "有限会社小田原建設",
+            "catchphrase": "江戸川区の建設会社",
+            "description": "江戸川区の総合土木会社。1994年の創業以来、土木工事を手がけている。",
+            "engineIndustry": "不動産・建設",
+            "colorTheme": "落ち着いた",
+            "skeleton": "看板",
+        }
+        payload = pipeline.anonymized_sample_payload(lead)
+        self.assertEqual(payload["storeName"], "◯◯建設（見本）")
+        self.assertNotIn("小田原", payload["storeName"])
+        self.assertNotIn("小田原", payload["description"])
+        self.assertNotIn("1994", payload["description"])
+        self.assertNotEqual(payload["description"], lead["description"])
+        self.assertEqual(payload["catchphrase"], "江戸川区の建設会社")
+        self.assertEqual(payload["industry"], "不動産・建設")
+
+        self.assertIsNone(pipeline.anonymized_sample_payload({"catchphrase": ""}))
+
+    def test_strip_sample_url_marks_removed_only_when_present(self):
+        with_url = {"sample_url": "https://freehp.jp/s/old-real-name"}
+        self.assertTrue(pipeline.strip_sample_url(with_url))
+        self.assertNotIn("sample_url", with_url)
+        self.assertTrue(with_url["sample_url_removed"])
+
+        without_url = {"name": "x"}
+        self.assertFalse(pipeline.strip_sample_url(without_url))
+        self.assertNotIn("sample_url_removed", without_url)
+
+    def test_create_sample_screenshots_generates_captures_and_unpublishes(self):
+        self.write_leads(
+            [
+                {
+                    "name": "有限会社小田原建設",
+                    "catchphrase": "江戸川区の建設会社",
+                    "engineIndustry": "不動産・建設",
+                    "colorTheme": "落ち着いた",
+                    "skeleton": "看板",
+                    "sample_url": "https://free-hp-engine.ryoseiworld.workers.dev/s/old-real-name",
+                }
+            ]
+        )
+        key_path = self.root / "batch.key"
+        key_path.write_text("very-secret-batch-key\n", encoding="utf-8")
+        output_dir = self.root / "samples_png"
+        responses = [
+            FakeResponse('{"url":"https://freehp.jp/s/kamei-one","slug":"kamei-one"}'),
+            FakeResponse('{"ok":true}'),
+        ]
+
+        captured: dict = {}
+
+        def fake_capture(url, output_path, width=pipeline.SAMPLE_SCREENSHOT_WIDTH):
+            captured["url"] = url
+            output_path = Path(output_path)
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+            output_path.write_bytes(b"PNG-DATA")
+
+        with mock.patch.object(urllib.request, "urlopen", side_effect=responses) as urlopen:
+            with mock.patch.object(pipeline, "capture_screenshot", side_effect=fake_capture) as capture_mock:
+                output = io.StringIO()
+                with contextlib.redirect_stdout(output):
+                    result = pipeline.create_sample_screenshots(self.leads_path, key_path, output_dir)
+
+        self.assertEqual(result, {"generated": 1, "reused": 0, "failed": 0})
+        leads = self.read_leads()
+        expected_path = output_dir / "建設_江戸川区.png"
+        self.assertEqual(leads[0]["sample_png"], str(expected_path))
+        self.assertTrue(expected_path.exists())
+        self.assertNotIn("sample_url", leads[0])
+        self.assertTrue(leads[0]["sample_url_removed"])
+        self.assertNotIn("very-secret-batch-key", output.getvalue())
+
+        capture_mock.assert_called_once()
+        self.assertEqual(captured["url"], "https://freehp.jp/s/kamei-one")
+
+        # 撮影後には必ずunpublishが呼ばれる
+        self.assertEqual(urlopen.call_count, 2)
+        create_request = urlopen.call_args_list[0].args[0]
+        create_payload = json.loads(create_request.data.decode("utf-8"))
+        self.assertEqual(create_payload["storeName"], "◯◯建設（見本）")
+        self.assertNotIn("小田原", json.dumps(create_payload, ensure_ascii=False))
+        unpublish_request = urlopen.call_args_list[1].args[0]
+        self.assertEqual(unpublish_request.full_url, pipeline.UNPUBLISH_API)
+        self.assertEqual(json.loads(unpublish_request.data.decode("utf-8")), {"slug": "kamei-one"})
+
+    def test_create_sample_screenshots_reuses_cached_png_without_network(self):
+        self.write_leads(
+            [{"name": "テスト運送株式会社", "catchphrase": "船橋市の運送会社", "engineIndustry": "その他"}]
+        )
+        output_dir = self.root / "samples_png"
+        output_dir.mkdir(parents=True)
+        cached_path = output_dir / "運送_船橋市.png"
+        cached_path.write_bytes(b"CACHED")
+        key_path = self.root / "batch.key"  # 使われない想定（中身は空でよい）
+
+        with mock.patch.object(urllib.request, "urlopen") as urlopen:
+            with contextlib.redirect_stdout(io.StringIO()):
+                result = pipeline.create_sample_screenshots(self.leads_path, key_path, output_dir)
+
+        self.assertEqual(result, {"generated": 0, "reused": 1, "failed": 0})
+        urlopen.assert_not_called()
+        leads = self.read_leads()
+        self.assertEqual(leads[0]["sample_png"], str(cached_path))
+
+    def test_create_sample_screenshots_unpublishes_even_if_capture_fails(self):
+        self.write_leads(
+            [{"name": "テストケア株式会社", "catchphrase": "柏市の介護事業所", "engineIndustry": "医療・クリニック"}]
+        )
+        key_path = self.root / "batch.key"
+        key_path.write_text("very-secret-batch-key", encoding="utf-8")
+        output_dir = self.root / "samples_png"
+        responses = [
+            FakeResponse('{"url":"https://freehp.jp/s/kamei-fail","slug":"kamei-fail"}'),
+            FakeResponse('{"ok":true}'),
+        ]
+
+        with mock.patch.object(urllib.request, "urlopen", side_effect=responses) as urlopen:
+            with mock.patch.object(pipeline, "capture_screenshot", side_effect=RuntimeError("boom")):
+                with contextlib.redirect_stdout(io.StringIO()):
+                    result = pipeline.create_sample_screenshots(self.leads_path, key_path, output_dir)
+
+        self.assertEqual(result, {"generated": 0, "reused": 0, "failed": 1})
+        # 撮影に失敗してもunpublishは必ず呼ばれる
+        self.assertEqual(urlopen.call_count, 2)
+        unpublish_request = urlopen.call_args_list[1].args[0]
+        self.assertEqual(json.loads(unpublish_request.data.decode("utf-8")), {"slug": "kamei-fail"})
+        leads = self.read_leads()
+        self.assertNotIn("sample_png", leads[0])
+        self.assertIn("撮影失敗", leads[0]["sample_error"])
+        self.assertFalse((output_dir / "ケアサービス_柏市.png").exists())
 
 
 if __name__ == "__main__":

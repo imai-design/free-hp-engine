@@ -31,6 +31,43 @@ PUSH_NOTE = "2026-08-20 採用装置 候補（scout収集・メール根拠URL�
 FORBIDDEN_SAMPLE_WORDS = ("お店", "ご来店", "無料")
 MAX_DOWNLOAD_BYTES = 2_000_000
 
+# 2026-08-20〜: 相手の社名を使った見本を無断公開したことへの抗議を受けて、
+# 見本のstoreName/descriptionには相手の固有情報を一切渡さない仮名方式に切り替えた。
+SAMPLES_PNG_DIR = OUTREACH_DIR / "samples_png"
+SAMPLE_SCREENSHOT_WIDTH = 390
+SAMPLE_SCREENSHOT_HEIGHT = 900
+
+# classify_industry() が返す業種ラベル → 仮名店名に使う業種語。
+# 未収録のラベルは _kamei_word() が「会社/事業所/機関」を外した残りで代用する。
+KAMEI_WORDS: dict[str, str] = {
+    "建設会社": "建設",
+    "運送会社": "運送",
+    "介護事業所": "ケアサービス",
+    "システム開発会社": "システム",
+    "製造会社": "製作所",
+    "医療機関": "クリニック",
+    "警備会社": "警備",
+    "清掃会社": "クリーンサービス",
+    "人材会社": "キャリアサポート",
+    "販売会社": "商会",
+}
+DEFAULT_KAMEI_WORD = "サービス"
+
+# 業種ラベル → 説明文に使う一般的な仕事内容（相手固有の事実は含めない）。
+INDUSTRY_TASKS: dict[str, str] = {
+    "建設会社": "建設・土木工事",
+    "運送会社": "運送・配送の仕事",
+    "介護事業所": "介護サービス",
+    "システム開発会社": "システム開発",
+    "製造会社": "ものづくり",
+    "医療機関": "医療サービス",
+    "警備会社": "警備業務",
+    "清掃会社": "清掃業務",
+    "人材会社": "人材サービス",
+    "販売会社": "販売業務",
+}
+DEFAULT_INDUSTRY_TASK = "地域の仕事"
+
 
 class PipelineError(RuntimeError):
     """利用者に秘密情報を含めず表示できるパイプラインエラー。"""
@@ -566,6 +603,188 @@ def _unpublish_sample(slug: str, key: str) -> None:
         raise PipelineError("掲載停止APIが失敗しました")
 
 
+_CATCHPHRASE_PATTERN = re.compile(r"^(?P<municipality>.+?)の(?P<industry_label>.+)$")
+
+
+def split_catchphrase(catchphrase: str) -> tuple[str, str]:
+    """「{市区}の{業種語}」形式のcatchphraseを分解する。
+
+    市区町村名に「の」が含まれる稀なケースは分割位置がずれる簡略実装。
+    本格対応するなら parse_markdown 時点で municipality/industry_label を
+    リードへ別フィールドとして保存し直す。
+    """
+    match = _CATCHPHRASE_PATTERN.match(str(catchphrase or "").strip())
+    if not match:
+        return "", ""
+    return match.group("municipality"), match.group("industry_label")
+
+
+def _kamei_word(industry_label: str) -> str:
+    word = KAMEI_WORDS.get(industry_label)
+    if word:
+        return word
+    stripped = re.sub(r"(会社|事業所|機関)$", "", industry_label).strip()
+    return stripped or DEFAULT_KAMEI_WORD
+
+
+def kamei_store_name(industry_label: str) -> str:
+    """相手の社名を一切使わない仮の店名を作る。"""
+    return f"◯◯{_kamei_word(industry_label)}（見本）"
+
+
+def build_generic_description(municipality: str, industry_label: str) -> str:
+    """相手固有の事実（創業年・取引先・許認可番号等）を含まない一般的な説明文を作る。"""
+    task = INDUSTRY_TASKS.get(industry_label) or f"{_kamei_word(industry_label)}の仕事"
+    return (
+        f"{municipality}で{task}を手がける会社の見本ページです。"
+        "実際の会社名・写真・文章は、お話をうかがってから入れ替えます。"
+    )
+
+
+def sample_png_path(municipality: str, industry_label: str, output_dir: str | Path = SAMPLES_PNG_DIR) -> Path:
+    return Path(output_dir) / f"{_kamei_word(industry_label)}_{municipality}.png"
+
+
+def anonymized_sample_payload(lead: dict[str, Any]) -> dict[str, str] | None:
+    """見本生成APIへ送る、相手の社名・固有情報を含まないpayloadを作る。
+
+    catchphraseから業種・地域を特定できないリードにはNoneを返す。
+    """
+    municipality, industry_label = split_catchphrase(lead.get("catchphrase", ""))
+    if not municipality or not industry_label:
+        return None
+    return {
+        "storeName": kamei_store_name(industry_label),
+        "industry": str(lead.get("engineIndustry", "その他")),
+        "catchphrase": str(lead.get("catchphrase", "")),
+        "description": build_generic_description(municipality, industry_label),
+        "colorTheme": str(lead.get("colorTheme", "落ち着いた")),
+        "skeleton": str(lead.get("skeleton", "看板")),
+        "sampleSource": "map",
+    }
+
+
+def strip_sample_url(lead: dict[str, Any]) -> bool:
+    """旧方式（相手の社名で公開したURL）をリードから消し、除去済みの印を残す。"""
+    if not str(lead.get("sample_url", "")).strip():
+        lead.pop("sample_url", None)
+        return False
+    lead.pop("sample_url", None)
+    lead["sample_url_removed"] = True
+    return True
+
+
+def capture_screenshot(url: str, output_path: str | Path, width: int = SAMPLE_SCREENSHOT_WIDTH) -> None:
+    """Playwrightで見本URLをスマホ幅・フルページで撮影しPNG保存する。"""
+    from playwright.sync_api import sync_playwright  # 遅延import: このモジュールを読むだけの経路を軽くする
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        try:
+            page = browser.new_page(viewport={"width": width, "height": SAMPLE_SCREENSHOT_HEIGHT})
+            try:
+                page.goto(url, wait_until="networkidle", timeout=30_000)
+                page.screenshot(path=str(output_path), full_page=True)
+            finally:
+                page.close()
+        finally:
+            browser.close()
+
+
+def create_sample_screenshots(
+    leads_path: str | Path | None = None,
+    key_path: str | Path = BATCH_KEY_PATH,
+    output_dir: str | Path = SAMPLES_PNG_DIR,
+) -> dict[str, int]:
+    """仮名の見本を生成→撮影→即座に非公開化し、リードにsample_pngを紐づける。
+
+    同じ業種＋市区のPNGが既にあれば使い回し、API呼び出し・撮影をしない。
+    """
+    leads = load_leads(leads_path)
+    generated = 0
+    reused = 0
+    failed = 0
+    key: str | None = None
+
+    for lead in leads:
+        if strip_sample_url(lead):
+            save_leads(leads, leads_path)
+
+        if str(lead.get("sample_png", "")).strip():
+            continue
+
+        payload = anonymized_sample_payload(lead)
+        if payload is None:
+            lead["sample_error"] = "catchphraseから業種・地域を特定できません"
+            failed += 1
+            save_leads(leads, leads_path)
+            continue
+
+        municipality, industry_label = split_catchphrase(lead.get("catchphrase", ""))
+        cache_path = sample_png_path(municipality, industry_label, output_dir)
+        if cache_path.exists():
+            lead["sample_png"] = str(cache_path)
+            lead.pop("sample_error", None)
+            reused += 1
+            save_leads(leads, leads_path)
+            continue
+
+        if key is None:
+            key = _read_secret(key_path, "見本生成キー")
+
+        try:
+            result = _post_json(SAMPLE_API, payload, "x-batch-key", key, 60)
+            sample_url = result.get("url")
+            if not isinstance(sample_url, str):
+                raise PipelineError("見本生成APIにurlがありません")
+            parsed = urllib.parse.urlsplit(sample_url)
+            if parsed.scheme != "https" or not parsed.netloc:
+                raise PipelineError("見本URLが不正です")
+            slug = _slug_from_sample(result, sample_url)
+        except Exception as error:
+            lead["sample_error"] = f"見本生成失敗: {_failure_label(error)}"
+            failed += 1
+            save_leads(leads, leads_path)
+            continue
+
+        screenshot_error: str | None = None
+        try:
+            capture_screenshot(sample_url, cache_path, SAMPLE_SCREENSHOT_WIDTH)
+        except Exception as error:
+            screenshot_error = f"撮影失敗: {_failure_label(error)}"
+            cache_path.unlink(missing_ok=True)
+
+        # 撮影の成否に関わらず、見本ページを公開したままにしないため必ず非公開化する。
+        unpublish_error: str | None = None
+        try:
+            _unpublish_sample(slug, key)
+        except Exception as error:
+            unpublish_error = _failure_label(error)
+
+        if screenshot_error:
+            message = screenshot_error
+            if unpublish_error:
+                message += f"・掲載停止にも失敗: {unpublish_error}"
+            lead["sample_error"] = message
+            lead.pop("sample_png", None)
+            lead.pop("unpublish_warning", None)
+            failed += 1
+        else:
+            lead["sample_png"] = str(cache_path)
+            lead.pop("sample_error", None)
+            if unpublish_error:
+                lead["unpublish_warning"] = f"見本ページの掲載停止に失敗: {unpublish_error}（手動確認要）"
+            else:
+                lead.pop("unpublish_warning", None)
+            generated += 1
+        save_leads(leads, leads_path)
+
+    print(f"見本PNG: 新規生成{generated}件 / 使い回し{reused}件 / 失敗{failed}件")
+    return {"generated": generated, "reused": reused, "failed": failed}
+
+
 def create_samples(
     leads_path: str | Path | None = None,
     key_path: str | Path = BATCH_KEY_PATH,
@@ -729,8 +948,15 @@ def build_parser() -> argparse.ArgumentParser:
     parse_parser = subparsers.add_parser("parse", help="候補MarkdownをJSONへ変換")
     parse_parser.add_argument("md_path", help="候補Markdownのパス")
     subparsers.add_parser("fill-desc", help="公式サイトの記載だけで説明文を作成")
-    subparsers.add_parser("samples", help="説明文のある候補の見本を生成・検査")
-    subparsers.add_parser("push", help="合格した候補をfreehp-cloudへ投入")
+    subparsers.add_parser(
+        "samples", help="[廃止] 相手の社名で見本を生成・検査（2026-08-19の抗議を受けて廃止。samples-pngを使う）"
+    )
+    subparsers.add_parser(
+        "samples-png", help="仮名の見本を生成→PNG撮影→即非公開化し、リードにsample_pngを紐づける"
+    )
+    subparsers.add_parser(
+        "push", help="[廃止] 合格した候補をfreehp-cloudへ投入（sample_url前提のため廃止。新方式は未実装）"
+    )
     subparsers.add_parser("status", help="進捗件数を表示")
     return parser
 
@@ -744,6 +970,8 @@ def main(argv: list[str] | None = None) -> int:
             fill_descriptions()
         elif args.command == "samples":
             create_samples()
+        elif args.command == "samples-png":
+            create_sample_screenshots()
         elif args.command == "push":
             push_leads()
         elif args.command == "status":
