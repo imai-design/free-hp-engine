@@ -114,6 +114,30 @@ function json(data: unknown, status = 200, headers: HeadersInit = {}): Response 
   });
 }
 
+/** handleSampleの公開処理（KV書き込み〜D1記録）のうち、どの工程で失敗したかを表す。 */
+type PublishStep =
+  | "createUniqueSlug"
+  | "put:photo"
+  | "put:site"
+  | "put:partner_site"
+  | "put:partner_count"
+  | "recordApplication"
+  | "statsAccessKey";
+
+/**
+ * Cloudflare KV/D1が返す典型的なエラーメッセージから、原因の見当を付ける。
+ * 合鍵経路（handleSample）のログ・レスポンスだけで使う簡易分類で、確定診断ではない
+ * （Cloudflareのエラーメッセージ文言はランタイムのバージョンで変わりうるため、当たらないこともある）。
+ */
+function likelyPublishCause(message: string): string | undefined {
+  const lower = message.toLowerCase();
+  if (lower.includes("429") || lower.includes("rate limit") || lower.includes("too many requests")) return "kv_rate_limit";
+  if (lower.includes("quota") || lower.includes("exceeded") || lower.includes("limit")) return "kv_quota";
+  if (lower.includes("413") || lower.includes("too large") || lower.includes("value too large")) return "kv_value_too_large";
+  if (lower.includes("d1_error") || lower.includes("sqlite") || lower.includes("database")) return "d1_error";
+  return undefined;
+}
+
 function corsHeaders(request: Request): Headers {
   const headers = new Headers();
   const origin = request.headers.get("origin");
@@ -661,26 +685,36 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
   }
   const baseUrl = (env.PUBLIC_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/$/u, "");
   const expirationTtl = sampleTtlSeconds(sampleSource);
+  // どの工程で失敗したかをcatchから見えるようにする（KVのput/createUniqueSlug/D1のどこで落ちたか特定するため）。
+  let publishStep: PublishStep = "createUniqueSlug";
   try {
     const slug = await createUniqueSlug(env.SITES, input.storeName);
     const publicUrl = `${baseUrl}/s/${slug}`;
     const photoUrl = input.photo ? `${publicUrl}/photo` : undefined;
-    if (input.photo) await env.SITES.put(`photo:${slug}`, input.photo, { expirationTtl });
+    if (input.photo) {
+      publishStep = "put:photo";
+      await env.SITES.put(`photo:${slug}`, input.photo, { expirationTtl });
+    }
     const html = renderSite(input, content, { publicUrl, photoUrl, sample: true, sampleSource, skeleton: skeletonKey });
+    publishStep = "put:site";
     await env.SITES.put(`site:${slug}`, html, { expirationTtl });
     if (partner) {
       const now = context.now?.() ?? Date.now();
+      publishStep = "put:partner_site";
       await env.SITES.put(
         `partner_site:${slug}`,
         JSON.stringify({ key: partner.key, name: partner.name, at: new Date(now).toISOString() }),
         { expirationTtl },
       );
+      publishStep = "put:partner_count";
       const countKey = `partner_count:${partner.key}:${tokyoDateKey(now).slice(0, 7)}`;
       const storedCount = Number(await env.SITES.get(countKey) ?? "0");
       const count = Number.isSafeInteger(storedCount) && storedCount >= 0 ? storedCount : 0;
       await env.SITES.put(countKey, String(count + 1));
     }
-    // 申込内容の記録。失敗してもここまでの生成・公開は成功しているのでレスポンスは変えない。
+    // 申込内容の記録。失敗してもここまでの生成・公開は成功しているのでレスポンスは変えない
+    // （recordApplication自体は内部でtry/catchして例外を投げない設計。それでも工程名は残しておく）。
+    publishStep = "recordApplication";
     await recordApplication(env.DB, {
       createdAt: new Date(context.now?.() ?? Date.now()).toISOString(),
       kind: "sample",
@@ -704,10 +738,29 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
       userAgent: request.headers.get("user-agent") ?? undefined,
     }, env.SITES);
     const result: { url: string; slug: string; statsUrl?: string } = { url: publicUrl, slug };
-    if (env.ADMIN_KEY) result.statsUrl = `${publicUrl}/stats?k=${await statsAccessKey(env.ADMIN_KEY, slug)}`;
+    if (env.ADMIN_KEY) {
+      publishStep = "statsAccessKey";
+      result.statsUrl = `${publicUrl}/stats?k=${await statsAccessKey(env.ADMIN_KEY, slug)}`;
+    }
     return json(result);
-  } catch {
-    return json({ error: "公開処理に失敗しました。" }, 503);
+  } catch (error) {
+    const errorName = error instanceof Error ? error.name : "UnknownError";
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const likelyCause = likelyPublishCause(errorMessage);
+    // 合鍵経路なので構造化ログを残す。原因の切り分け（KV上限かD1かslug払い出しか）をログから追えるようにする。
+    console.error("[handleSample] publish failed", {
+      step: publishStep,
+      errorName,
+      errorMessage,
+      likelyCause,
+    });
+    // レスポンス自体は互換性のため503のまま。detail/likely_causeは合鍵経路なので出してよい（他の502分岐と同じ方針）。
+    return json({
+      error: "公開処理に失敗しました。",
+      step: publishStep,
+      likely_cause: likelyCause,
+      detail: errorMessage,
+    }, 503);
   }
 }
 
