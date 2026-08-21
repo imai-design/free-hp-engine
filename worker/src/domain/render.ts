@@ -1,5 +1,5 @@
 import type { GeneratedContent } from "../generation/provider.ts";
-import { buildSkeletonContext, escapeHtml, resolvePhotoFrame } from "./render/parts.ts";
+import { buildSkeletonContext, escapeHtml, resolvePhotoFrame, sampleDisclaimerOf } from "./render/parts.ts";
 import { selectPalette, selectSkeleton } from "./render/select.ts";
 import type { SkeletonKey } from "./render/types.ts";
 import type { SampleSource, SiteInput } from "./validate.ts";
@@ -74,7 +74,7 @@ export function renderSite(input: SiteInput, content: GeneratedContent, options:
   const robots = options.sample ? `\n  <meta name="robots" content="noindex,nofollow">` : "";
   const sampleDocumentAttribute = isSample ? ' data-freehp-sample="true"' : "";
   const sampleDisclaimer = isSample
-    ? `<aside class="sample-disclaimer" aria-label="見本について">これは AIホームページ製作所（freehp.jp）が提案用に作った非公式の見本です。${ctx.storeName}様の公式サイトではなく、承諾も得ていません。掲載を望まれない場合は info@freehp.jp までご連絡ください（すぐに非公開にします）。</aside>\n  `
+    ? `<aside class="sample-disclaimer" aria-label="見本について">${sampleDisclaimerOf(sampleSource, ctx.storeName)}</aside>\n  `
     : "";
 
   const rootVars = Object.entries(palette.vars)

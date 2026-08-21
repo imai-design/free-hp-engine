@@ -689,7 +689,9 @@ def anonymized_sample_payload(lead: dict[str, Any]) -> dict[str, str] | None:
         "description": build_generic_description(municipality, industry_label),
         "colorTheme": str(lead.get("colorTheme", "落ち着いた")),
         "skeleton": str(lead.get("skeleton", "看板")),
-        "sampleSource": "map",
+        # 相手の社名を使わない仮名見本なので、エンジン側の断り書きも「地図サービスの公開情報」
+        # ではなく架空見本向けの文言にする（2026-08-21変更）。
+        "sampleSource": "anonymous",
     }
 
 

@@ -248,6 +248,37 @@ test("5骨格のmap/threads見本は最上部に非公式・未承認・削除�
   assert.ok(kanban.indexOf('class="sample-disclaimer"') < kanban.indexOf("<header"), "帯が看板ヘッダーより後ろにある");
 });
 
+// ---- 匿名見本 sampleSource:"anonymous"（2026-08-21追加：社名を出さない仮名見本用） ----
+
+test("sampleSource:anonymousは上部の帯・本文の断り書き・フッターの3箇所すべてが架空見本向けの文言になり、旧文言（承諾・地図サービス・14日）を含まない（5骨格すべて）", () => {
+  for (const { skeleton, industry } of SKELETON_CASES) {
+    const input = baseInput({ industry, storeName: "◯◯建設（見本）" });
+    const html = renderSite(input, baseContent, { skeleton, sample: true, sampleSource: "anonymous" });
+
+    // 上部の帯
+    assert.ok(
+      html.includes("これは AIホームページ製作所（freehp.jp）が業種のイメージとして作った架空の見本です。実在の会社・お店のものではありません。"),
+      `${skeleton}: anonymousの上部帯文言が出ていない`,
+    );
+    // 本文の断り書き
+    assert.ok(
+      html.includes("このページは架空の見本です。実際のホームページは、お話をうかがってから、会社の言葉と写真でお作りします。"),
+      `${skeleton}: anonymousの本文断り書きが出ていない`,
+    );
+    // フッター
+    assert.ok(
+      html.includes("この見本は、AIホームページ製作所（RYOSEIWORLD）が作りました。ご連絡先："),
+      `${skeleton}: anonymousのフッターが出ていない`,
+    );
+
+    assert.ok(!html.includes("承諾"), `${skeleton}: anonymousなのに「承諾」が残っている`);
+    assert.ok(!html.includes("地図サービス"), `${skeleton}: anonymousなのに「地図サービス」が残っている`);
+    assert.ok(!html.includes("14日"), `${skeleton}: anonymousなのに「14日」が残っている`);
+    assert.ok(!html.includes("掲載を望まれない"), `${skeleton}: anonymousなのに「掲載を望まれない」が残っている`);
+    assert.match(html, /<meta name="robots" content="noindex,nofollow">/u, `${skeleton}: anonymousなのにnoindexが無い`);
+  }
+});
+
 test("見本レンダーは入力由来の外部URL画像をHTMLへ混ぜず、data URI写真だけを描画する", () => {
   const external = renderSite(
     baseInput({ photo: "https://example.com/unapproved-photo.jpg" }),

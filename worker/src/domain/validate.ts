@@ -56,7 +56,9 @@ export interface SiteInput {
 // 見本ページ下部の断り書きの文言を変えるためだけの値。お店データ(SiteInput)には含めず、
 // /api/sample のリクエスト直下で受け取る（handleSample側で読み取り、renderSiteのoptionsへ渡す）。
 
-export const SAMPLE_SOURCES = ["map", "threads"] as const;
+// anonymous: 2026-08-21追加。社名を出さない仮名見本（◯◯建設（見本）等）用。
+// 「地図」「Threads」どちらの元ネタにも紐づかないため、断り書きは会社に触れない架空見本文言になる。
+export const SAMPLE_SOURCES = ["map", "threads", "anonymous"] as const;
 export type SampleSource = (typeof SAMPLE_SOURCES)[number];
 
 /** 見本の元ネタ。省略時は既定の "map"（後方互換：既存の呼び出し元は指定しない）。 */

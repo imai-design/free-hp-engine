@@ -344,6 +344,7 @@ class SaiyoPipelineTest(unittest.TestCase):
         self.assertNotEqual(payload["description"], lead["description"])
         self.assertEqual(payload["catchphrase"], "江戸川区の建設会社")
         self.assertEqual(payload["industry"], "不動産・建設")
+        self.assertEqual(payload["sampleSource"], "anonymous")
 
         self.assertIsNone(pipeline.anonymized_sample_payload({"catchphrase": ""}))
 
@@ -409,6 +410,7 @@ class SaiyoPipelineTest(unittest.TestCase):
         create_request = urlopen.call_args_list[0].args[0]
         create_payload = json.loads(create_request.data.decode("utf-8"))
         self.assertEqual(create_payload["storeName"], "◯◯建設（見本）")
+        self.assertEqual(create_payload["sampleSource"], "anonymous")
         self.assertNotIn("小田原", json.dumps(create_payload, ensure_ascii=False))
         unpublish_request = urlopen.call_args_list[1].args[0]
         self.assertEqual(unpublish_request.full_url, pipeline.UNPUBLISH_API)

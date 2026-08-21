@@ -409,9 +409,15 @@ export function footerHtml(
   const mail = `<a href="mailto:${contact}">${contact}</a>（<a href="https://freehp.jp/">freehp.jp</a>）`;
   const noun = venueNoun(venueKind);
   const ttlDays = sampleTtlDays(sampleSource);
-  return isSample
-    ? `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま${ttlDays}日たつと、自動的に非公開になります。気に入っていただけたら、そのまま${noun}のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（この${noun}へのお問い合わせ窓口ではありません）：${mail}`
-    : `このホームページは、AIホームページ製作所（RYOSEIWORLD）で作りました。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（この${noun}へのお問い合わせ窓口ではありません）：${mail}`;
+  if (!isSample) {
+    return `このホームページは、AIホームページ製作所（RYOSEIWORLD）で作りました。<strong>期限はありません。</strong>ずっと公開したままにできます。<br>直したいところ・独自ドメインのご相談（この${noun}へのお問い合わせ窓口ではありません）：${mail}`;
+  }
+  // anonymous（社名を出さない架空見本）は、特定の会社に「掲載を望まれない場合」等を持ちかけると
+  // 事実と矛盾する（見本自体に実在の会社が紐づいていないため）。日数・掲載の話を出さない別文にする。
+  if (sampleSource === "anonymous") {
+    return `この見本は、AIホームページ製作所（RYOSEIWORLD）が作りました。ご連絡先：${mail}`;
+  }
+  return `このページは、AIホームページ製作所（RYOSEIWORLD）が作った<strong>見本</strong>です。ご連絡がないまま${ttlDays}日たつと、自動的に非公開になります。気に入っていただけたら、そのまま${noun}のものとしてお渡しし、期限なしで公開します。<br>ご連絡先（この${noun}へのお問い合わせ窓口ではありません）：${mail}`;
 }
 
 /**
@@ -422,10 +428,33 @@ const SAMPLE_NOTICE_BY_SOURCE: Readonly<Record<SampleSource, (noun: string) => s
   map: (noun) => `このページは、地図サービスの公開情報だけを使って作った<strong>見本</strong>です。紹介文はこちらで仮に書いたもので、${noun}に伺って書いたものではありません。ご連絡いただければ、${noun}の言葉に書き直してお渡しします。`,
   threads: () =>
     `このページは、Threadsでのご投稿を拝見して、こちらで仮に作った<strong>見本</strong>です。名前や内容は仮のもので、ご連絡いただければ本物に作り直してお渡しします。ご連絡がなければ${sampleTtlDays("threads")}日で自動的に消えます。`,
+  // anonymous: 特定の会社を元にしていない業種イメージの見本。「会社に伺って」「地図サービス」等、
+  // 実在の会社が存在する前提の言い回しは矛盾するため使わない（2026-08-21追加）。
+  anonymous: () =>
+    "このページは架空の見本です。実際のホームページは、お話をうかがってから、会社の言葉と写真でお作りします。",
 };
 
 export function sampleNoticeOf(source: SampleSource, venueKind: VenueKind = "shop"): string {
   return SAMPLE_NOTICE_BY_SOURCE[source](venueNoun(venueKind));
+}
+
+/**
+ * ページ最上部に出す帯（非公式・見本であることの表示）。escapeHtml済みのstoreNameを受け取る。
+ * map/threadsは「◯◯様の公式サイトではなく、承諾も得ていません」と会社名に紐づけて断るが、
+ * anonymousは特定の会社の承諾を得る／得ない話自体が存在しない（架空の屋号のため）ので触れない
+ * （2026-08-21追加）。
+ */
+const SAMPLE_DISCLAIMER_BY_SOURCE: Readonly<Record<SampleSource, (storeNameHtml: string) => string>> = {
+  map: (storeNameHtml) =>
+    `これは AIホームページ製作所（freehp.jp）が提案用に作った非公式の見本です。${storeNameHtml}様の公式サイトではなく、承諾も得ていません。掲載を望まれない場合は info@freehp.jp までご連絡ください（すぐに非公開にします）。`,
+  threads: (storeNameHtml) =>
+    `これは AIホームページ製作所（freehp.jp）が提案用に作った非公式の見本です。${storeNameHtml}様の公式サイトではなく、承諾も得ていません。掲載を望まれない場合は info@freehp.jp までご連絡ください（すぐに非公開にします）。`,
+  anonymous: () =>
+    "これは AIホームページ製作所（freehp.jp）が業種のイメージとして作った架空の見本です。実在の会社・お店のものではありません。",
+};
+
+export function sampleDisclaimerOf(source: SampleSource, storeNameHtml: string): string {
+  return SAMPLE_DISCLAIMER_BY_SOURCE[source](storeNameHtml);
 }
 
 // ---- SkeletonContext の組み立て ----

@@ -603,6 +603,26 @@ test("sampleSource:threadsを指定すると「Threadsでのご投稿」の断�
   assert.ok(!html.includes("地図サービスの公開情報"), "地図由来の文言が残っている");
 });
 
+test("sampleSource:anonymousを指定すると架空見本向けの断り書きになり、地図・Threads由来の文言も承諾・14日の言及も出ない", async () => {
+  const store = new MemoryKv();
+  const response = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST", headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, storeName: "◯◯建設（見本）", sampleSource: "anonymous" }),
+    }),
+    { ...env(), SITES: store, BATCH_KEY: "correct-key" }, { generate: stubProvider });
+  assert.equal(response.status, 200);
+  const { slug } = await response.json() as { slug: string };
+  const html = store.values.get(`site:${slug}`) as string;
+  assert.ok(html.includes("業種のイメージとして作った架空の見本"), "anonymous版の上部帯が出ていない");
+  assert.ok(html.includes("このページは架空の見本です。実際のホームページは、お話をうかがってから"), "anonymous版の本文断り書きが出ていない");
+  assert.ok(html.includes("この見本は、AIホームページ製作所（RYOSEIWORLD）が作りました。ご連絡先："), "anonymous版のフッターが出ていない");
+  assert.ok(!html.includes("承諾"), "承諾の文言が残っている");
+  assert.ok(!html.includes("地図サービス"), "地図サービスの文言が残っている");
+  assert.ok(!html.includes("Threadsでのご投稿"), "Threadsの文言が混ざっている");
+  assert.ok(!html.includes("14日"), "14日の文言が残っている");
+});
+
 test("その他の『行政書士 柴田事務所』は再生成後も店舗語が残れば機械置換し、事務所向けHTMLだけを公開する", async () => {
   const store = new MemoryKv();
   let generationCalls = 0;
@@ -837,4 +857,20 @@ test("申込ページはTTLなし／map見本は14日／threads見本は90日（
   const threadsHtml = await kv.get(`site:${threadsSample}`) as string;
   assert.ok(threadsHtml.includes("90日たつと"));
   assert.ok(!threadsHtml.includes("14日たつと"));
+
+  const d = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, storeName: "◯◯建設（見本）", sampleSource: "anonymous" }),
+    }),
+    { ...env(spy), BATCH_KEY: "correct-key" },
+    { generate: stubProvider },
+  );
+  const { slug: anonymousSample } = await d.json() as { slug: string };
+  // KVの実TTLはmapと同じ14日のまま（撮影後すぐunpublishする運用なので値自体に意味は薄い）だが、
+  // 文言側は「14日」を出さない（anonymousは会社の承諾・掲載可否の話が存在しないため）。
+  assert.equal(ttls[`site:${anonymousSample}`], 60 * 60 * 24 * 14, "anonymous見本の実TTLが14日になっていない");
+  const anonymousHtml = await kv.get(`site:${anonymousSample}`) as string;
+  assert.ok(!anonymousHtml.includes("14日"), "anonymous見本の文言に14日が出ている");
 });
