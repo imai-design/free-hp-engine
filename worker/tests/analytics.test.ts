@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { D1Database, D1PreparedStatement } from "../src/domain/applications.ts";
-import { statsAccessKey } from "../src/domain/analytics.ts";
+import { injectBeacon, statsAccessKey } from "../src/domain/analytics.ts";
 import { renderSite } from "../src/domain/render.ts";
 import { handleRequest } from "../src/index.ts";
 
@@ -192,6 +192,34 @@ test("beacon.js: キャッシュ、sid、PV、30秒beat、電話・地図イベ�
   assert.match(script, /30000/u);
   assert.match(script, /send\('tel'\)/u);
   assert.match(script, /send\('map'\)/u);
+});
+
+test("injectBeacon: 既存scriptがあれば二重注入しない", () => {
+  const html = '<body><script src="/beacon.js" defer></script></body>';
+  const injected = injectBeacon(html);
+  assert.equal(injected, html);
+  assert.equal(injected.match(/\/beacon\.js/gu)?.length, 1);
+});
+
+test("injectBeacon: scriptがなければbody末尾へ注入する", () => {
+  assert.equal(
+    injectBeacon("<body><main>既存ページ</main></body>"),
+    '<body><main>既存ページ</main><script src="/beacon.js" defer></script></body>',
+  );
+});
+
+test("injectBeacon: 旧CSPを計測対応CSPへ置換する", () => {
+  const legacy = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'";
+  const html = injectBeacon(`<meta http-equiv="Content-Security-Policy" content="${legacy}"><body></body>`);
+  assert.ok(html.includes("default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'"));
+  assert.ok(!html.includes(legacy));
+});
+
+test("injectBeacon: body終了タグがなければ末尾へ注入する", () => {
+  assert.equal(
+    injectBeacon("<!doctype html><title>古いページ</title>"),
+    '<!doctype html><title>古いページ</title><script src="/beacon.js" defer></script>',
+  );
 });
 
 test("renderSite: beacon scriptをbody末尾に注入しCSPでself通信だけを許可する", () => {

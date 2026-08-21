@@ -6,6 +6,9 @@ const SID_PATTERN = /^[a-z0-9]{8,32}$/u;
 const BEAT_TYPES = new Set(["pv", "beat", "tel", "map"] as const);
 const MAX_BODY_BYTES = 1024;
 const DAY_MS = 24 * 60 * 60 * 1000;
+const LEGACY_SITE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'";
+const ANALYTICS_SITE_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'";
+const BEACON_TAG = '<script src="/beacon.js" defer></script>';
 
 export type BeatType = "pv" | "beat" | "tel" | "map";
 
@@ -174,6 +177,14 @@ export const BEACON_SCRIPT = String.raw`(()=>{try{
   setInterval(()=>{if(document.visibilityState==='visible')send('beat')},30000);
   document.addEventListener('click',e=>{try{const a=e.target instanceof Element?e.target.closest('a'):null;if(!a)return;const href=a.getAttribute('href')||'';if(href.startsWith('tel:'))send('tel');else if(href.includes('google.')&&href.includes('maps'))send('map')}catch{}});
 }catch{}})();`;
+
+export function injectBeacon(html: string): string {
+  const updatedCsp = html.replace(LEGACY_SITE_CSP, ANALYTICS_SITE_CSP);
+  if (updatedCsp.includes("/beacon.js")) return updatedCsp;
+  const bodyEnd = updatedCsp.lastIndexOf("</body>");
+  if (bodyEnd === -1) return `${updatedCsp}${BEACON_TAG}`;
+  return `${updatedCsp.slice(0, bodyEnd)}${BEACON_TAG}${updatedCsp.slice(bodyEnd)}`;
+}
 
 export function beaconResponse(): Response {
   return new Response(BEACON_SCRIPT, {

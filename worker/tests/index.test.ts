@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { statsAccessKey } from "../src/domain/analytics.ts";
 import { escapeHtml, renderSite } from "../src/domain/render.ts";
 import { photoShapeOf, readImageSize } from "../src/domain/imageSize.ts";
 import { handleRequest } from "../src/index.ts";
@@ -52,6 +53,50 @@ test("正常系: 構造化コンテンツを固定テンプレートで保存し
   assert.equal((await kv.get(`site:${result.slug}`))?.includes("喫茶かえる"), true);
 });
 
+test("生成・見本の成功レスポンスはADMIN_KEY設定時だけstatsUrlを含む", async () => {
+  const adminKey = "stats-admin-secret";
+  const withAdmin = { ...env(new MemoryKv()), ADMIN_KEY: adminKey };
+  const generatedResponse = await handleRequest(request(validInput), withAdmin, { generate: stubProvider });
+  const generatedResult = await generatedResponse.json() as { slug: string; statsUrl?: string };
+  assert.equal(
+    generatedResult.statsUrl,
+    `https://free-hp-engine.example.workers.dev/s/${generatedResult.slug}/stats?k=${await statsAccessKey(adminKey, generatedResult.slug)}`,
+  );
+
+  const sampleResponse = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify(validInput),
+    }),
+    { ...env(new MemoryKv()), BATCH_KEY: "correct-key", ADMIN_KEY: adminKey },
+    { generate: stubProvider },
+  );
+  const sampleResult = await sampleResponse.json() as { slug: string; statsUrl?: string };
+  assert.equal(
+    sampleResult.statsUrl,
+    `https://free-hp-engine.example.workers.dev/s/${sampleResult.slug}/stats?k=${await statsAccessKey(adminKey, sampleResult.slug)}`,
+  );
+});
+
+test("生成・見本の成功レスポンスはADMIN_KEY未設定ならstatsUrlキーを含まない", async () => {
+  const generatedResponse = await handleRequest(request(validInput), env(new MemoryKv()), { generate: stubProvider });
+  const generatedResult = await generatedResponse.json() as Record<string, unknown>;
+  assert.equal(Object.hasOwn(generatedResult, "statsUrl"), false);
+
+  const sampleResponse = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST",
+      headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify(validInput),
+    }),
+    { ...env(new MemoryKv()), BATCH_KEY: "correct-key" },
+    { generate: stubProvider },
+  );
+  const sampleResult = await sampleResponse.json() as Record<string, unknown>;
+  assert.equal(Object.hasOwn(sampleResult, "statsUrl"), false);
+});
+
 test("HEAD /s/{slug}: GETと同じ200・HTMLヘッダーで空ボディを返す", async () => {
   const kv = new MemoryKv();
   await kv.put("site:head-test", "<!doctype html><title>HEAD test</title>");
@@ -71,6 +116,23 @@ test("HEAD /s/{slug}: GETと同じ200・HTMLヘッダーで空ボディを返す
   assert.equal(missingHead.status, missingGet.status);
   assert.deepEqual(Object.fromEntries(missingHead.headers), Object.fromEntries(missingGet.headers));
   assert.equal(await missingHead.text(), "");
+});
+
+test("GET /s/{slug}: KV保存済みの旧HTMLへビーコンと計測対応CSPを遡及注入する", async () => {
+  const kv = new MemoryKv();
+  const legacyCsp = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'";
+  await kv.put("site:legacy-site", `<html><head><meta http-equiv="Content-Security-Policy" content="${legacyCsp}"></head><body><main>旧ページ</main></body></html>`);
+
+  const response = await handleRequest(
+    new Request("https://free-hp-engine.example.workers.dev/s/legacy-site"),
+    env(kv),
+  );
+  const html = await response.text();
+
+  assert.equal(response.status, 200);
+  assert.match(html, /<main>旧ページ<\/main><script src="\/beacon\.js" defer><\/script><\/body>/u);
+  assert.ok(html.includes("script-src 'self'; connect-src 'self'"));
+  assert.equal(await kv.get("site:legacy-site"), `<html><head><meta http-equiv="Content-Security-Policy" content="${legacyCsp}"></head><body><main>旧ページ</main></body></html>`);
 });
 
 test("見本ページのGET/HEADだけX-Robots-TagとReferrer-Policyを返す", async () => {

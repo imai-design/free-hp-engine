@@ -19,6 +19,7 @@ import {
   constantTimeEqual,
   getAnalyticsStats,
   handleBeat,
+  injectBeacon,
   statsAccessKey,
 } from "./domain/analytics.ts";
 import { renderStatsPage } from "./domain/statsPage.ts";
@@ -151,7 +152,7 @@ async function handleSite(slug: string, env: Env): Promise<Response> {
     headers["x-robots-tag"] = "noindex, nofollow, noarchive";
     headers["referrer-policy"] = "no-referrer";
   }
-  return new Response(html, {
+  return new Response(html ? injectBeacon(html) : html, {
     status: html ? 200 : 404,
     headers,
   });
@@ -315,7 +316,9 @@ async function handleGenerate(request: Request, env: Env, context: RequestContex
   } catch {
     return json({ error: "公開処理に失敗しました。もう一度お試しください。" }, 503);
   }
-  return json({ url: publicUrl, slug }, 200, { "x-rate-limit-remaining": String(limit.remaining) });
+  const result: { url: string; slug: string; statsUrl?: string } = { url: publicUrl, slug };
+  if (env.ADMIN_KEY) result.statsUrl = `${publicUrl}/stats?k=${await statsAccessKey(env.ADMIN_KEY, slug)}`;
+  return json(result, 200, { "x-rate-limit-remaining": String(limit.remaining) });
 }
 
 interface SamplePartner {
@@ -700,7 +703,9 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
       ip: request.headers.get("CF-Connecting-IP") ?? undefined,
       userAgent: request.headers.get("user-agent") ?? undefined,
     }, env.SITES);
-    return json({ url: publicUrl, slug });
+    const result: { url: string; slug: string; statsUrl?: string } = { url: publicUrl, slug };
+    if (env.ADMIN_KEY) result.statsUrl = `${publicUrl}/stats?k=${await statsAccessKey(env.ADMIN_KEY, slug)}`;
+    return json(result);
   } catch {
     return json({ error: "公開処理に失敗しました。" }, 503);
   }
