@@ -1,5 +1,5 @@
 import type { GeneratedContent } from "../generation/provider.ts";
-import type { SiteInput } from "./validate.ts";
+import type { SampleSource, SiteInput } from "./validate.ts";
 import { badgeWordFor, resolveVenueKind, venueNoun, type VenueKind } from "./render/venue.ts";
 
 export interface QaResult {
@@ -30,6 +30,18 @@ const VISIT_REPLACEMENT: Readonly<Record<Exclude<VenueKind, "shop">, string>> = 
   company: "お問い合わせ",
   clinic: "ご来院",
 };
+
+// anonymous見本（sampleSource:"anonymous"）の関連性チェック用。storeNameは「◯◯建設（見本）」のような
+// 仮名で、LLMが「（見本）」を落として「◯◯建設」とだけ書くため、literal一致の関連性チェックが恒常的に
+// 落ちていた（建設・介護で全滅した実測あり・2026-08-21）。括弧書きの見本ラベルと◯◯を取り除いた芯の語でも
+// 一致とみなす。文脈解析はしない意図的な簡略化。
+const SAMPLE_LABEL_SUFFIX_PATTERN = /[（(]見本\d*[）)]\s*$/u;
+const PLACEHOLDER_CIRCLE_PATTERN = /◯+/gu;
+
+function anonymousStoreNameCoreTerm(storeName: string): string {
+  const core = storeName.replace(SAMPLE_LABEL_SUFFIX_PATTERN, "").replace(PLACEHOLDER_CIRCLE_PATTERN, "").trim();
+  return [...core].length > 1 ? core : storeName;
+}
 
 /** QAリトライでも直らなかった非店舗向け文言を、最後に安全な語へ寄せる。 */
 export function sanitizeVenueTerms(content: GeneratedContent, input: SiteInput): GeneratedContent {
@@ -66,7 +78,7 @@ export function sanitizeCategoryLeak(content: GeneratedContent, input: SiteInput
   };
 }
 
-export function qaContent(content: GeneratedContent, input: SiteInput): QaResult {
+export function qaContent(content: GeneratedContent, input: SiteInput, sampleSource?: SampleSource): QaResult {
   const required = [content.subheadline, content.aboutText, content.closingText];
   if (required.some((value) => typeof value !== "string" || value.trim().length === 0)) {
     return { ok: false, reason: "required generated field is empty" };
@@ -88,7 +100,9 @@ export function qaContent(content: GeneratedContent, input: SiteInput): QaResult
   if (venueKind !== "shop" && SHOP_ONLY_TERM_PATTERN.test(combined)) {
     return { ok: false, reason: VENUE_LANGUAGE_QA_REASON };
   }
-  if (![input.storeName, input.industry, input.catchphrase].some((needle) => combined.includes(needle))) {
+  const relevanceNeedles = [input.storeName, input.industry, input.catchphrase];
+  if (sampleSource === "anonymous") relevanceNeedles.push(anonymousStoreNameCoreTerm(input.storeName));
+  if (!relevanceNeedles.some((needle) => combined.includes(needle))) {
     return { ok: false, reason: "generated content is not related to the submitted business" };
   }
   if (combined.length > 6000) return { ok: false, reason: "generated content is too long" };

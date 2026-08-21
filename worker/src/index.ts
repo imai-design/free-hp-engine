@@ -74,6 +74,7 @@ async function generateCheckedContent(
   input: SiteInput,
   env: Env,
   generator: NonNullable<RequestContext["generate"]>,
+  sampleSource?: SampleSource,
 ): Promise<CheckedGeneration> {
   let venueFallback: GeneratedContent | undefined;
   let lastReason: string | undefined;
@@ -85,7 +86,7 @@ async function generateCheckedContent(
       if (!venueFallback) throw error;
       break;
     }
-    const qa = qaContent(generated, input);
+    const qa = qaContent(generated, input, sampleSource);
     if (qa.ok) return { content: generated };
     lastReason = qa.reason;
     if (qa.reason !== VENUE_LANGUAGE_QA_REASON && qa.reason !== CATEGORY_LEAK_QA_REASON) break;
@@ -93,7 +94,7 @@ async function generateCheckedContent(
   }
   if (!venueFallback) return { reason: lastReason };
   const sanitized = sanitizeCategoryLeak(sanitizeVenueTerms(venueFallback, input), input);
-  const fallbackQa = qaContent(sanitized, input);
+  const fallbackQa = qaContent(sanitized, input, sampleSource);
   return fallbackQa.ok ? { content: sanitized } : { reason: fallbackQa.reason ?? lastReason };
 }
 
@@ -634,7 +635,7 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
   }
   let content: GeneratedContent;
   try {
-    const generated = await generateCheckedContent(input, env, context.generate ?? generateContent);
+    const generated = await generateCheckedContent(input, env, context.generate ?? generateContent, sampleSource);
     if (!generated.content) {
       return json({ error: "生成内容の確認に失敗しました。", reason: generated.reason }, 422);
     }

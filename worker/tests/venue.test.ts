@@ -258,3 +258,26 @@ test("QAは審査カテゴリ名（士業・専門サービス／不動産・建
   );
   assert.equal(shopOk.ok, true);
 });
+
+test("QAの関連性チェックは sampleSource:anonymous のとき「（見本）」と「◯◯」を取り除いた芯の語でも一致とみなす", () => {
+  const anonymousInput = input("不動産・建設", "◯◯建設（見本）");
+  // LLMが「（見本）」を落として「◯◯建設」とだけ書く実測パターン（storeName/industry/catchphraseの
+  // どれもliteralには含まれない）。industryやcatchphraseの文言も混ぜない。
+  const anonymousContent: GeneratedContent = {
+    subheadline: "◯◯建設は地域の工事を専門に手がけます。",
+    aboutText: "創業以来、地域密着で工事を行っています。",
+    highlights: ["丁寧な施工を行います"],
+    closingText: "お気軽にご相談ください。",
+  };
+  assert.equal(
+    qaContent(anonymousContent, anonymousInput, "anonymous").ok,
+    true,
+    "anonymousで芯の語（建設）一致による合格にならない",
+  );
+
+  // mapでは従来どおり：同じ入力・同じ生成文でも芯の語の緩和は適用されず不合格のまま。
+  const mapResult = qaContent(anonymousContent, anonymousInput, "map");
+  assert.deepEqual(mapResult, { ok: false, reason: "generated content is not related to the submitted business" });
+  // sampleSource省略時（後方互換の既定）もmapと同じく緩和されない。
+  assert.deepEqual(qaContent(anonymousContent, anonymousInput), mapResult);
+});
