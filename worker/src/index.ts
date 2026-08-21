@@ -14,6 +14,14 @@ import { validateDomainRequest, type DomainRequestInput, type DomainRequestMetho
 import { countFailedApplications, hashIp, listApplications, recordApplication, toCsv, type D1Database } from "./domain/applications.ts";
 import { enforceAdminRateLimit } from "./domain/adminRateLimit.ts";
 import { sampleTtlSeconds } from "./domain/sample.ts";
+import {
+  beaconResponse,
+  constantTimeEqual,
+  getAnalyticsStats,
+  handleBeat,
+  statsAccessKey,
+} from "./domain/analytics.ts";
+import { renderStatsPage } from "./domain/statsPage.ts";
 
 interface KvListResult {
   keys: Array<{ name: string }>;
@@ -734,9 +742,46 @@ async function handleSampleUnpublish(request: Request, env: Env): Promise<Respon
   return json({ ok: true });
 }
 
+async function hasStatsAccess(slug: string, key: string | null, env: Env): Promise<boolean> {
+  if (!env.ADMIN_KEY) return false;
+  const expected = await statsAccessKey(env.ADMIN_KEY, slug);
+  return constantTimeEqual(key, expected);
+}
+
+async function handleStatsApi(url: URL, env: Env, context: RequestContext): Promise<Response> {
+  const slug = url.searchParams.get("slug") ?? "";
+  if (!/^[a-z0-9-]{4,80}$/u.test(slug) || !await hasStatsAccess(slug, url.searchParams.get("k"), env)) {
+    return json({ error: "not found" }, 404);
+  }
+  if (!env.DB) return json({ error: "analytics unavailable" }, 503);
+  try {
+    const stats = await getAnalyticsStats(env.DB, slug, context.now?.() ?? Date.now());
+    return json(stats, 200, { "cache-control": "no-store" });
+  } catch (error) {
+    console.error("[analytics] query failed", error instanceof Error ? error.message : String(error));
+    return json({ error: "analytics unavailable" }, 503);
+  }
+}
+
+async function handleStatsPage(slug: string, key: string | null, env: Env): Promise<Response> {
+  if (!await hasStatsAccess(slug, key, env)) return json({ error: "not found" }, 404);
+  return new Response(renderStatsPage(slug, key ?? ""), {
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "x-content-type-options": "nosniff",
+      "referrer-policy": "no-referrer",
+      "x-robots-tag": "noindex, nofollow, noarchive",
+      "content-security-policy": "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; form-action 'none'",
+    },
+  });
+}
+
 export async function handleRequest(request: Request, env: Env, context: RequestContext = {}): Promise<Response> {
   const url = new URL(request.url);
+  if (url.pathname === "/api/beat") return handleBeat(request, env.DB, context.now?.() ?? Date.now());
   if (request.method === "OPTIONS") return withCors(request, new Response(null, { status: 204 }));
+  if (url.pathname === "/api/stats" && request.method === "GET") return handleStatsApi(url, env, context);
   if (url.pathname === "/api/generate" && request.method === "POST") return withCors(request, await handleGenerate(request, env, context));
   if (url.pathname === "/api/sample" && request.method === "POST") return withCors(request, await handleSample(request, env, context));
   if (url.pathname === "/api/sample/unpublish" && request.method === "POST") return withCors(request, await handleSampleUnpublish(request, env));
@@ -748,6 +793,15 @@ export async function handleRequest(request: Request, env: Env, context: Request
     return new Response(null, { status: 302, headers: { location: TOP_PAGE_URL } });
   }
   if (request.method === "GET" || request.method === "HEAD") {
+    if (url.pathname === "/beacon.js") {
+      const response = beaconResponse();
+      return request.method === "HEAD" ? withoutBody(response) : response;
+    }
+    const statsMatch = url.pathname.match(/^\/s\/([a-z0-9-]{4,80})\/stats$/u);
+    if (statsMatch) {
+      const response = await handleStatsPage(statsMatch[1], url.searchParams.get("k"), env);
+      return request.method === "HEAD" ? withoutBody(response) : response;
+    }
     const photoMatch = url.pathname.match(/^\/s\/([a-z0-9-]{4,80})\/photo$/u);
     if (photoMatch) {
       const response = await handlePhoto(photoMatch[1], env);

@@ -195,7 +195,9 @@ test("XSS入力は最終HTMLでエスケープされ、タグとして解釈さ�
   const html = await kv.get(`site:${result.slug}`) as string;
   assert.match(html, /&lt;img/);
   assert.equal(html.includes("<img"), false);
-  assert.equal(html.includes("<script"), false);
+  // 計測用の固定ビーコン1本だけは仕様として入る。入力由来のscriptが増えていないことを確認する。
+  assert.deepEqual(html.match(/<script\b/gu), ["<script"]);
+  assert.ok(html.includes('<script src="/beacon.js" defer></script>'));
   assert.equal(html.includes('onerror="alert(1)"'), false);
 });
 

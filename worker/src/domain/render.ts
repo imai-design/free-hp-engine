@@ -92,7 +92,7 @@ export function renderSite(input: SiteInput, content: GeneratedContent, options:
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="${text(SITE_NAME)}">${ogUrl}${ogImage}
   <meta name="twitter:card" content="${twitterCard}">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; script-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'">
   <link rel="icon" href="${faviconDataUri(ctx.initial, palette.mark)}">
   <title>${ctx.storeName}｜ホームページ</title>
   <style>
@@ -102,6 +102,7 @@ export function renderSite(input: SiteInput, content: GeneratedContent, options:
 </head>
 <body data-型="${skeleton.key}" data-配色="${palette.key}">
   ${sampleDisclaimer}${skeleton.body(ctx)}
+  <script src="/beacon.js" defer></script>
 </body>
 </html>`;
 }
