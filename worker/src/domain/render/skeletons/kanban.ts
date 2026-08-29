@@ -140,7 +140,7 @@ body{margin:0;background:var(--night);color:var(--ink);font-family:var(--gothic)
 .hero__inner{position:relative;z-index:1}
 .kanban{position:relative;margin:0 auto;padding:clamp(22px,6vw,42px) clamp(18px,5vw,38px) clamp(20px,5.5vw,34px);
   background:var(--sign);border:clamp(5px,1.5vw,10px) solid var(--accent);
-  box-shadow:0 0 0 4px var(--sign),0 18px 0 rgb(0 0 0/.22),0 28px 52px rgb(0 0 0/.42);
+  box-shadow:0 18px 0 rgb(0 0 0/.22),0 28px 52px rgb(0 0 0/.42);
   transform:rotate(-.28deg)}
 .kanban::before,.kanban::after{content:"";position:absolute;top:12px;width:10px;height:10px;
   border-radius:50%;background:var(--accent);box-shadow:inset 0 2px 2px rgb(255 255 255/.22),0 2px 2px rgb(0 0 0/.35)}
@@ -181,7 +181,7 @@ main{padding-block:clamp(30px,8vw,58px) 10px}
 .panel{position:relative;margin:0 0 clamp(24px,6vw,36px);padding:clamp(30px,7vw,42px) clamp(18px,5vw,30px) 24px;
   background:var(--surface);border:3px solid var(--sign);box-shadow:7px 7px 0 var(--sign)}
 .panel h2{display:inline-block;margin:-50px 0 22px -8px;padding:8px 18px;background:var(--sign);color:var(--sign-ink);
-  border:3px solid var(--accent);font-size:clamp(1.05rem,4.6vw,1.32rem);font-weight:900;line-height:1.45;
+  font-size:clamp(1.05rem,4.6vw,1.32rem);font-weight:900;line-height:1.45;
   letter-spacing:.08em;box-shadow:4px 4px 0 var(--accent)}
 p{margin:0 0 1em}
 .panel p:last-child{margin-bottom:0}
@@ -216,7 +216,7 @@ footer{margin-top:clamp(38px,9vw,64px);padding:26px 0 32px;border-top:8px solid 
   color:var(--muted);font-size:.74rem;font-weight:600;line-height:1.9}
 footer a{color:var(--accent);font-weight:900}
 @media (max-width:480px){
-  .kanban{box-shadow:0 0 0 3px var(--sign),0 12px 0 rgb(0 0 0/.22),0 22px 36px rgb(0 0 0/.38)}
+  .kanban{box-shadow:0 12px 0 rgb(0 0 0/.22),0 22px 36px rgb(0 0 0/.38)}
   .panel{box-shadow:5px 5px 0 var(--sign)}
   .contact-row:not(.contact-row--phone){display:block}
   .contact-label{display:block;width:auto;margin-bottom:2px}
