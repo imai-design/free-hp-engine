@@ -300,7 +300,9 @@ def parse_markdown(md_path: str | Path, leads_path: str | Path | None = None) ->
                 "storeName": name,
                 "catchphrase": f"{municipality}の{industry_word}",
                 "description": "",
-                "skeleton": "看板",
+                # 5原則準拠パレット強制に伴い、写真枠が主役でない「方眼」を既定にする
+                # （求人・採用見本は資料的な方眼＋墨が合うため。2026-08-29〜）。
+                "skeleton": "方眼",
                 "colorTheme": "落ち着いた",
                 "engineIndustry": engine_industry,
                 "note": "",
@@ -688,7 +690,9 @@ def anonymized_sample_payload(lead: dict[str, Any]) -> dict[str, str] | None:
         "catchphrase": str(lead.get("catchphrase", "")),
         "description": build_generic_description(municipality, industry_label),
         "colorTheme": str(lead.get("colorTheme", "落ち着いた")),
-        "skeleton": str(lead.get("skeleton", "看板")),
+        "skeleton": str(lead.get("skeleton", "方眼")),
+        # 5原則準拠パレットを強制指定する（求人・採用見本は資料的な方眼＋墨。2026-08-29〜）。
+        "palette": "墨",
         # 相手の社名を使わない仮名見本なので、エンジン側の断り書きも「地図サービスの公開情報」
         # ではなく架空見本向けの文言にする（2026-08-21変更）。
         "sampleSource": "anonymous",

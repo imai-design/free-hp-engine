@@ -72,7 +72,7 @@ class SaiyoPipelineTest(unittest.TestCase):
         self.assertIn("採用ページへの導線がない", lead["signal"])
         self.assertLessEqual(len(lead["signal"]), 80)
         self.assertEqual(lead["description"], "")
-        self.assertEqual(lead["skeleton"], "看板")
+        self.assertEqual(lead["skeleton"], "方眼")
         self.assertEqual(lead["colorTheme"], "落ち着いた")
         self.assertEqual(lead["engineIndustry"], "不動産・建設")
         self.assertEqual(lead["note"], "")
@@ -345,6 +345,7 @@ class SaiyoPipelineTest(unittest.TestCase):
         self.assertEqual(payload["catchphrase"], "江戸川区の建設会社")
         self.assertEqual(payload["industry"], "不動産・建設")
         self.assertEqual(payload["sampleSource"], "anonymous")
+        self.assertEqual(payload["palette"], "墨")  # 5原則準拠パレット強制（2026-08-29〜）
 
         self.assertIsNone(pipeline.anonymized_sample_payload({"catchphrase": ""}))
 
