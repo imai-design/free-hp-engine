@@ -23,6 +23,7 @@ import {
   statsAccessKey,
 } from "./domain/analytics.ts";
 import { renderStatsPage } from "./domain/statsPage.ts";
+import { getSampleViews, recordSampleView, type SampleViewStore } from "./domain/sampleViews.ts";
 
 interface KvListResult {
   keys: Array<{ name: string }>;
@@ -53,6 +54,11 @@ export interface Env {
    * 2026-09-17まで（追加から30日間）だけ後方互換で受け付ける（DB.md参照）。
    */
   ADMIN_KEY?: string;
+  /**
+   * 見本(kind=sample)閲覧の最小計測用KV。{slug, date}単位のカウントのみを持つ（UA/IP等は持たない）。
+   * 未設定のあいだは計測をスキップするだけで配信自体は止めない。
+   */
+  SAMPLE_VIEWS?: SampleViewStore;
 }
 
 export interface RequestContext {
@@ -175,6 +181,12 @@ async function handleSite(slug: string, env: Env): Promise<Response> {
   if (isSampleHtml(html)) {
     headers["x-robots-tag"] = "noindex, nofollow, noarchive";
     headers["referrer-policy"] = "no-referrer";
+    // 声かけ→閲覧→決済の中間指標。KV書き込み失敗で配信自体を止めないようにcatchする。
+    try {
+      await recordSampleView(env.SAMPLE_VIEWS, slug);
+    } catch (error) {
+      console.error("[sampleViews] record failed", error instanceof Error ? error.message : String(error));
+    }
   }
   return new Response(html ? injectBeacon(html) : html, {
     status: html ? 200 : 404,
@@ -800,6 +812,23 @@ async function handleSampleUnpublish(request: Request, env: Env): Promise<Respon
   return json({ ok: true });
 }
 
+/** GET /api/sample-views?slug=xxx。既存のdomain-requestsと同じx-batch-key合鍵方式。 */
+async function handleSampleViews(request: Request, env: Env): Promise<Response> {
+  const key = request.headers.get("x-batch-key");
+  if (!env.BATCH_KEY || !fullScanEqual(key, env.BATCH_KEY)) return json({ error: "not found" }, 404);
+
+  const slug = new URL(request.url).searchParams.get("slug") ?? "";
+  if (!/^[a-z0-9-]{4,80}$/u.test(slug)) return json({ error: "slug is required" }, 422);
+  if (!env.SAMPLE_VIEWS) return json({ error: "sample views service is unavailable" }, 503);
+
+  try {
+    const result = await getSampleViews(env.SAMPLE_VIEWS, slug);
+    return json(result ?? { slug, views: 0, byDate: [] });
+  } catch {
+    return json({ error: "閲覧数を取得できませんでした。" }, 503);
+  }
+}
+
 async function hasStatsAccess(slug: string, key: string | null, env: Env): Promise<boolean> {
   if (!env.ADMIN_KEY) return false;
   const expected = await statsAccessKey(env.ADMIN_KEY, slug);
@@ -845,6 +874,7 @@ export async function handleRequest(request: Request, env: Env, context: Request
   if (url.pathname === "/api/sample/unpublish" && request.method === "POST") return withCors(request, await handleSampleUnpublish(request, env));
   if (url.pathname === "/api/domain-request" && request.method === "POST") return withCors(request, await handleDomainRequest(request, env, context));
   if (url.pathname === "/api/domain-requests" && request.method === "GET") return withCors(request, await handleDomainRequests(request, env));
+  if (url.pathname === "/api/sample-views" && request.method === "GET") return withCors(request, await handleSampleViews(request, env));
   if (url.pathname === "/api/admin/applications" && request.method === "GET") return withCors(request, await handleAdminApplications(request, env, context));
   if (url.pathname.startsWith("/api/") && request.method !== "OPTIONS") return withCors(request, json({ error: "not found" }, 404));
   if ((request.method === "GET" || request.method === "HEAD") && url.pathname === "/") {

@@ -13,6 +13,11 @@ binding = "SITES"
 # Create with: npx wrangler kv namespace create SITES
 id = "YOUR_KV_NAMESPACE_ID"
 
+[[kv_namespaces]]
+binding = "SAMPLE_VIEWS"
+# Create with: npx wrangler kv namespace create SAMPLE_VIEWS
+id = "YOUR_KV_NAMESPACE_ID"
+
 [[d1_databases]]
 binding = "DB"
 database_name = "freehp-applications"
