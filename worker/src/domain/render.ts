@@ -31,6 +31,8 @@ export interface RenderSiteOptions {
   sampleSource?: SampleSource;
   /** 骨格を固定する。テストと、営業で見せ分けたいときだけ使う。 */
   skeleton?: SkeletonKey;
+  /** 配色を固定する。骨格が該当キーを持たなければ無視して従来どおりハッシュで選ぶ。 */
+  palette?: string;
 }
 
 export { escapeHtml };
@@ -61,7 +63,7 @@ export function renderSite(input: SiteInput, content: GeneratedContent, options:
   const isSample = options.sample ?? false;
   const sampleSource = options.sampleSource ?? "map";
   const skeleton = selectSkeleton(input, options.skeleton);
-  const palette = selectPalette(skeleton, input, isSample);
+  const palette = selectPalette(skeleton, input, isSample, options.palette);
   const ctx = buildSkeletonContext(input, content, skeleton, palette, options.photoUrl, isSample, sampleSource);
   const frame = resolvePhotoFrame(input);
 

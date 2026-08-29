@@ -759,6 +759,32 @@ test("skeletonを指定すると見本の骨格を固定でき、業種に無関
   assert.equal(bad.status, 400);
 });
 
+test("paletteを指定すると見本の配色を固定でき、存在しないキーでも400にせず従来選択にフォールバックする", async () => {
+  const store = new MemoryKv();
+  const testEnv = { ...env(), SITES: store, BATCH_KEY: "correct-key" };
+  const ok = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST", headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, skeleton: "方眼", palette: "墨" }),
+    }),
+    testEnv, { generate: stubProvider });
+  assert.equal(ok.status, 200);
+  const { slug } = await ok.json() as { slug: string };
+  const html = store.values.get(`site:${slug}`) as string;
+  assert.ok(html.includes('data-配色="墨"'), "指定した配色(墨)で作られていない");
+
+  const fallback = await handleRequest(
+    new Request("https://example.com/api/sample", {
+      method: "POST", headers: { "x-batch-key": "correct-key" },
+      body: JSON.stringify({ ...validInput, skeleton: "方眼", palette: "ないいろ" }),
+    }),
+    testEnv, { generate: stubProvider });
+  assert.equal(fallback.status, 200, "存在しないpaletteキーで400になっている（従来ロジックへのフォールバックが要件）");
+  const { slug: fallbackSlug } = await fallback.json() as { slug: string };
+  const fallbackHtml = store.values.get(`site:${fallbackSlug}`) as string;
+  assert.ok(!fallbackHtml.includes('data-配色="墨"'), "存在しないpaletteキー指定で意図せず墨が選ばれている");
+});
+
 test("申込フォーム経由のページにはnoindexを付けない", async () => {
   const store = new MemoryKv();
   const response = await handleRequest(request(validInput), { ...env(), SITES: store }, { generate: stubProvider });

@@ -680,6 +680,9 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
     if (!found) return json({ error: "skeleton is invalid" }, 400);
     skeletonKey = found.key;
   }
+  // paletteは配色を固定する検品用の補助フィールド。skeletonと違い、存在しないキーでも400にせず
+  // renderSite側（selectPalette）の従来ロジックへ無言でフォールバックさせる。文字列以外は無視する。
+  const paletteKey = typeof rawObject.palette === "string" && rawObject.palette !== "" ? rawObject.palette : undefined;
   let content: GeneratedContent;
   try {
     const generated = await generateCheckedContent(input, env, context.generate ?? generateContent, sampleSource);
@@ -707,7 +710,7 @@ async function handleSample(request: Request, env: Env, context: RequestContext)
       publishStep = "put:photo";
       await env.SITES.put(`photo:${slug}`, input.photo, { expirationTtl });
     }
-    const html = renderSite(input, content, { publicUrl, photoUrl, sample: true, sampleSource, skeleton: skeletonKey });
+    const html = renderSite(input, content, { publicUrl, photoUrl, sample: true, sampleSource, skeleton: skeletonKey, palette: paletteKey });
     publishStep = "put:site";
     await env.SITES.put(`site:${slug}`, html, { expirationTtl });
     if (partner) {

@@ -29,8 +29,15 @@ export function selectSkeleton(input: SiteInput, forced?: SkeletonKey): Skeleton
  * 配色を決める。見本ページ（options.sample）は店主が配色を選んでいないので、
  * input.colorTheme は営業側が機械的に入れた値でしかない。無視してハッシュで選ぶ。
  * 申込フォーム経由のときだけ、選ばれた温度の中から選ぶ。
+ *
+ * forced は骨格の forced と同型：検品用に配色を固定したいとき（例: stage2見本のplain強制）に使う。
+ * 該当キーが骨格に無ければ無言で従来ロジックへフォールバックする（存在しないキーで例外にしない）。
  */
-export function selectPalette(skeleton: Skeleton, input: SiteInput, isSample: boolean): Palette {
+export function selectPalette(skeleton: Skeleton, input: SiteInput, isSample: boolean, forced?: string): Palette {
+  if (forced) {
+    const found = skeleton.palettes.find((palette) => palette.key === forced);
+    if (found) return found;
+  }
   const seed = seedOf(input);
   const wanted = TEMPERATURE_OF[input.colorTheme];
   const pool = isSample ? skeleton.palettes : skeleton.palettes.filter((palette) => palette.temp === wanted);

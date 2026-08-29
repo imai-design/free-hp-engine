@@ -16,6 +16,9 @@ const FIXED = {
  *   pen/paper 6.30, pen/band 5.89, paper/pen 6.30.
  * 葡萄酒インク: ink/paper 15.43, ink/band 13.16, sub/paper 9.87, sub/band 8.41,
  *   pen/paper 8.25, pen/band 7.04, paper/pen 8.25.
+ * 墨（plain・白地パレット強制用）: ink/paper 17.40, ink/band 15.82, sub/paper 7.00,
+ *   sub/band 6.37, pen/paper 16.48, pen/band 14.99, paper/pen 16.48。penも無彩色にして
+ *   有彩色面積0%にする（gridは装飾専用のため既存方針どおりコントラスト対象外）。
  */
 const PALETTES: readonly Palette[] = [
   { key: "青インク", temp: "calm", mark: "#1F4E79", vars: { ...FIXED, pen: "#1F4E79" } },
@@ -47,6 +50,19 @@ const PALETTES: readonly Palette[] = [
       sub: "#B9C0C4",
       grid: "#46525A",
       pen: "#D3A1B5",
+    },
+  },
+  {
+    key: "墨",
+    temp: "plain",
+    mark: "#1A1A1A",
+    vars: {
+      paper: "#FFFFFF",
+      band: "#F4F4F4",
+      ink: "#1A1A1A",
+      sub: "#595959",
+      grid: "#D9D9D9",
+      pen: "#1F1F1F",
     },
   },
 ];

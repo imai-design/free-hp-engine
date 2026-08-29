@@ -15,6 +15,9 @@ const FIXED = {
  *   surface/strip 7.34, strip/paper 6.95, strip/surface 7.34.
  * 宵霞: ink/paper 15.93, ink/surface 14.10, sub/paper 10.00, sub/surface 8.85,
  *   surface/strip 7.78, strip/paper 8.79, strip/surface 7.78.
+ * 墨染（plain・白地パレット強制用）: ink/paper 17.40, ink/surface 16.67, sub/paper 7.00,
+ *   sub/surface 6.71, surface/strip 16.33, strip/paper 17.04, strip/surface 16.33。
+ * stripは黒固定（5原則「帯のベタ塗りは黒のみ」に整合）。
  */
 const PALETTES: readonly Palette[] = [
   { key: "藍", temp: "calm", mark: "#1B3A54", vars: { ...FIXED, strip: "#1B3A54" } },
@@ -46,6 +49,18 @@ const PALETTES: readonly Palette[] = [
       ink: "#F2EEE6",
       sub: "#BBBFC7",
       strip: "#D7A6B5",
+    },
+  },
+  {
+    key: "墨染",
+    temp: "plain",
+    mark: "#1C1C1C",
+    vars: {
+      paper: "#FFFFFF",
+      surface: "#FAFAFA",
+      ink: "#1A1A1A",
+      sub: "#595959",
+      strip: "#1C1C1C",
     },
   },
 ];

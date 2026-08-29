@@ -4,7 +4,7 @@ import type { VenueKind } from "./venue.ts";
 export type { SampleSource };
 
 export type SkeletonKey = "名刺" | "暖簾" | "短冊" | "方眼" | "看板";
-export type Temperature = "warm" | "calm" | "fresh" | "lively" | "moody";
+export type Temperature = "warm" | "calm" | "fresh" | "lively" | "moody" | "plain";
 
 export interface Palette {
   /** デバッグ用の名前。<body data-配色> に出す */

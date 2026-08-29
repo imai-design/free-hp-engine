@@ -741,10 +741,10 @@ function contrastRatio(a: string, b: string): number {
 
 const AA_MIN_CONTRAST = 4.5;
 
-test("WCAG AA 4.5:1: 名刺の本文色(ink)と補助色(sub)は、7配色すべてでcard/paperの上で基準を満たす", () => {
+test("WCAG AA 4.5:1: 名刺の本文色(ink)と補助色(sub)は、8配色すべてでcard/paperの上で基準を満たす", () => {
   const meishi = SKELETONS.find((skeleton) => skeleton.key === "名刺");
   assert.ok(meishi, "名刺骨格が見つからない");
-  assert.equal(meishi!.palettes.length, 7, "名刺は7配色のはず");
+  assert.equal(meishi!.palettes.length, 8, "名刺は8配色のはず（既存7＋plain強制用の白磁）");
   for (const palette of meishi!.palettes) {
     const { ink, sub, card, paper, seal, ground, foot, footlink } = palette.vars;
     assert.ok(contrastRatio(ink, card) >= AA_MIN_CONTRAST, `${palette.key}: ink/card ${contrastRatio(ink, card)}`);
@@ -760,6 +760,7 @@ test("WCAG AA 4.5:1: 名刺の本文色(ink)と補助色(sub)は、7配色すべ
 test("WCAG AA 4.5:1: 方眼の文字色は本文紙面(paper/band)の上で基準を満たす（罫線gridは装飾専用のため対象外）", () => {
   const hogan = SKELETONS.find((skeleton) => skeleton.key === "方眼");
   assert.ok(hogan, "方眼骨格が見つからない");
+  assert.equal(hogan!.palettes.length, 6, "方眼は6配色のはず（既存5＋plain強制用の墨）");
   for (const palette of hogan!.palettes) {
     const { ink, sub, pen, paper, band } = palette.vars;
     assert.ok(contrastRatio(ink, paper) >= AA_MIN_CONTRAST, `${palette.key}: ink/paper ${contrastRatio(ink, paper)}`);
@@ -796,9 +797,12 @@ test("WCAG AA 4.5:1: 看板の5配色は、実際に文字が乗る全8色ペア
   }
 });
 
+// temps: この骨格で「新規追加パレット」として検算対象にする温度。
+// 名刺・短冊・方眼はplain（見本強制用）を追加したので3つ、暖簾・看板は従来どおり2つ（lively/moody）のまま。
 const NEW_PALETTE_TEXT_PAIRS = [
   {
     skeleton: "名刺",
+    temps: ["lively", "moody", "plain"],
     pairs: [
       ["ink", "card"], ["ink", "paper"], ["ink", "notice"], ["sub", "card"], ["sub", "paper"],
       ["seal", "card"], ["seal", "paper"], ["card", "seal"], ["foot", "ground"], ["footlink", "ground"],
@@ -806,6 +810,7 @@ const NEW_PALETTE_TEXT_PAIRS = [
   },
   {
     skeleton: "暖簾",
+    temps: ["lively", "moody"],
     pairs: [
       ["sumi", "paper"], ["sumi", "washi"], ["kiji", "paper"], ["kiji", "washi"],
       ["ai-text", "paper"], ["ai-text", "washi"], ["beni-text", "paper"],
@@ -814,6 +819,7 @@ const NEW_PALETTE_TEXT_PAIRS = [
   },
   {
     skeleton: "短冊",
+    temps: ["lively", "moody", "plain"],
     pairs: [
       ["ink", "paper"], ["ink", "surface"], ["sub", "paper"], ["sub", "surface"],
       ["surface", "strip"], ["strip", "paper"], ["strip", "surface"],
@@ -821,6 +827,7 @@ const NEW_PALETTE_TEXT_PAIRS = [
   },
   {
     skeleton: "方眼",
+    temps: ["lively", "moody", "plain"],
     pairs: [
       ["ink", "paper"], ["ink", "band"], ["sub", "paper"], ["sub", "band"],
       ["pen", "paper"], ["pen", "band"], ["paper", "pen"],
@@ -828,19 +835,24 @@ const NEW_PALETTE_TEXT_PAIRS = [
   },
   {
     skeleton: "看板",
+    temps: ["lively", "moody"],
     pairs: [
       ["ink", "night"], ["ink", "surface"], ["muted", "night"], ["muted", "surface"],
       ["sign-ink", "sign"], ["accent", "night"], ["accent", "surface"], ["accent-ink", "accent"],
     ],
   },
-] as const satisfies readonly { skeleton: SkeletonKey; pairs: readonly (readonly [string, string])[] }[];
+] as const satisfies readonly { skeleton: SkeletonKey; temps: readonly Temperature[]; pairs: readonly (readonly [string, string])[] }[];
 
-test("WCAG AA 4.5:1: 新2テーマ×5骨格は、実際に文字が乗る全ペアで基準を満たす", () => {
-  for (const { skeleton, pairs } of NEW_PALETTE_TEXT_PAIRS) {
+test("短冊は8配色のはず（既存7＋plain強制用の墨染）", () => {
+  assert.equal(TANZAKU.palettes.length, 8, "短冊のパレット総数が変わっている");
+});
+
+test("WCAG AA 4.5:1: 新規追加パレット（新2テーマ＋plain）は、実際に文字が乗る全ペアで基準を満たす", () => {
+  for (const { skeleton, temps, pairs } of NEW_PALETTE_TEXT_PAIRS) {
     const found = SKELETONS.find((candidate) => candidate.key === skeleton);
     assert.ok(found, `${skeleton}: 骨格が見つからない`);
-    const newPalettes = found.palettes.filter((palette) => palette.temp === "lively" || palette.temp === "moody");
-    assert.equal(newPalettes.length, 2, `${skeleton}: 新テーマのパレットが2つではない`);
+    const newPalettes = found.palettes.filter((palette) => (temps as readonly string[]).includes(palette.temp));
+    assert.equal(newPalettes.length, temps.length, `${skeleton}: 新規追加パレットの数が期待(${temps.length})と違う`);
 
     for (const palette of newPalettes) {
       for (const [foreground, background] of pairs) {
@@ -849,4 +861,66 @@ test("WCAG AA 4.5:1: 新2テーマ×5骨格は、実際に文字が乗る全ペ�
       }
     }
   }
+});
+
+// ---- パレット強制機構（skeletonのforcedと同型。stage2見本のplain強制で使う） ----
+
+test("selectPalette: forcedキーが骨格に存在すればそれを返し、存在しなければ従来ロジックへフォールバックする", () => {
+  const hogan = SKELETONS.find((skeleton) => skeleton.key === "方眼");
+  assert.ok(hogan, "方眼骨格が見つからない");
+  const input = baseInput();
+
+  const forced = selectPalette(hogan!, input, false, "墨");
+  assert.equal(forced.key, "墨", "forcedキー「墨」を指定してもそのパレットが返らない");
+
+  const fallback = selectPalette(hogan!, input, false, "ないいろ");
+  const normal = selectPalette(hogan!, input, false);
+  assert.equal(fallback.key, normal.key, "存在しないforcedキーで従来のハッシュ選択にフォールバックしていない");
+});
+
+test("renderSite: options.paletteを指定すると、そのパレットのCSS変数値がHTMLに現れる（方眼×墨で確認）", () => {
+  const input = baseInput();
+  const html = renderSite(input, baseContent, { skeleton: "方眼", palette: "墨" });
+  assert.ok(html.includes('data-配色="墨"'), "data-配色属性に「墨」が出ていない");
+  assert.ok(html.includes("--paper: #FFFFFF;"), "墨パレットのpaper変数値がCSSに出ていない");
+  assert.ok(html.includes("--ink: #1A1A1A;"), "墨パレットのink変数値がCSSに出ていない");
+});
+
+test("renderSite: 存在しないpaletteキーはエラーにならず、従来のハッシュ選択にフォールバックする", () => {
+  const input = baseInput();
+  assert.doesNotThrow(() => renderSite(input, baseContent, { skeleton: "方眼", palette: "ないいろ" }));
+  const withInvalidPalette = renderSite(input, baseContent, { skeleton: "方眼", palette: "ないいろ" });
+  const withoutPalette = renderSite(input, baseContent, { skeleton: "方眼" });
+  assert.equal(withInvalidPalette, withoutPalette, "存在しないpaletteキー指定時の出力が、無指定時の出力と一致しない");
+  assert.ok(!withInvalidPalette.includes('data-配色="墨"'), "存在しないpaletteキー指定で意図せず墨が選ばれている");
+});
+
+test("名刺: plain(白磁)強制時だけ、影・角丸・角印の二重縁取りを無効化する上書きブロックが出る（他パレットの基本装飾は不変）", () => {
+  const input = baseInput({ industry: "その他" });
+
+  const white = renderSite(input, baseContent, { skeleton: "名刺", palette: "白磁" });
+  assert.ok(white.includes('<body data-型="名刺" data-配色="白磁">'), "白磁強制でbodyのdata-配色属性が白磁になっていない");
+  assert.ok(
+    white.includes('body[data-配色="白磁"] .meishi,\nbody[data-配色="白磁"] .ura,\nbody[data-配色="白磁"] .print{border-radius:0;box-shadow:none;border:1px solid var(--rule)}'),
+    "白磁専用の.meishi/.ura/.printの角丸・影の無効化ルールが出ていない",
+  );
+  assert.ok(
+    white.includes('body[data-配色="白磁"] .seal{border-radius:0;transform:none}'),
+    "白磁専用の.seal（角印の二重縁取り解除）ルールが出ていない",
+  );
+
+  const indigo = renderSite(input, baseContent, { skeleton: "名刺", palette: "藍鼠" });
+  assert.ok(indigo.includes('<body data-型="名刺" data-配色="藍鼠">'), "既存パレット(藍鼠)強制でbodyのdata-配色属性が変わっている");
+  // 骨格CSSはパレット非依存の静的テキストなので、白磁専用スコープの選択子自体（[data-配色="白磁"]という文字列）は
+  // どのパレット選択時も同じCSSテキストとして出力される。ここで確かめるべきは<body>タグの実際の属性値である。
+  assert.ok(!indigo.includes('<body data-型="名刺" data-配色="白磁">'), "既存パレット強制で意図せずbodyの配色属性が白磁になっている");
+  // 骨格CSSはパレット非依存の静的テキストなので、上書きブロック自体はどのパレット選択時も同じ文字列で出力される。
+  // ここで確かめたいのは、既存パレット向けの基本装飾（影・角丸・角印の回転）が上書きによって書き換え・削除されていないこと。
+  const shadowCount = (indigo.match(/box-shadow:var\(--stock\)/g) ?? []).length;
+  assert.equal(shadowCount, 3, ".meishi/.ura/.printの基本box-shadow定義(3箇所)が変わっている");
+  assert.ok(indigo.includes(".meishi{position:relative;background:var(--card);border-radius:3px;box-shadow:var(--stock)"), ".meishiの基本装飾（角丸・影）が変わっている");
+  assert.ok(indigo.includes(".ura{background:var(--paper);border-radius:3px;box-shadow:var(--stock)"), ".uraの基本装飾（角丸・影）が変わっている");
+  assert.ok(indigo.includes(".print{margin:0 0 24px;padding:9px 9px 30px;background:#fff;border-radius:2px;box-shadow:var(--stock)"), ".printの基本装飾（角丸・影）が変わっている");
+  assert.ok(indigo.includes("border:2.5px solid var(--seal);border-radius:4px;background:var(--card);color:var(--seal)"), ".sealの基本装飾（角丸）が変わっている");
+  assert.ok(indigo.includes("transform:rotate(-6deg)"), ".sealの基本装飾（回転）が変わっている");
 });

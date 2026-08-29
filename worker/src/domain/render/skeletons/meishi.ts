@@ -22,6 +22,9 @@ const FIXED = {
  * 夜紫: ink/card 14.36, ink/paper 15.86, ink/notice 13.09, sub/card 8.53,
  *   sub/paper 9.42, seal/card 8.72, seal/paper 9.63, card/seal 8.72,
  *   foot/ground 11.53, footlink/ground 14.36.
+ * 白磁（plain・白地パレット強制用）: ink/card 17.40, ink/paper 15.96, ink/notice 14.87,
+ *   sub/card 7.00, sub/paper 6.42, seal/card 5.69, seal/paper 5.22, card/seal 5.69,
+ *   foot/ground 6.42, footlink/ground 5.22。sealは角印だけに使う朱1色（アクセント1色以下を満たす）。
  */
 const PALETTES: readonly Palette[] = [
   { key: "藍鼠", temp: "calm", mark: "#0F5E6B", vars: { ...FIXED, ground: "#22303A", seal: "#0F5E6B" } },
@@ -63,6 +66,24 @@ const PALETTES: readonly Palette[] = [
       seal: "#E0AFC1",
       foot: "#CFC2C8",
       footlink: "#E5D8DD",
+    },
+  },
+  {
+    key: "白磁",
+    temp: "plain",
+    mark: "#B0432F",
+    vars: {
+      card: "#FFFFFF",
+      paper: "#F5F5F5",
+      ink: "#1A1A1A",
+      sub: "#595959",
+      rule: "#D9D9D9",
+      deboss: "#F0F0F0",
+      notice: "#EDEDED",
+      ground: "#F5F5F5",
+      seal: "#B0432F",
+      foot: "#595959",
+      footlink: "#B0432F",
     },
   },
 ];
@@ -158,6 +179,17 @@ main{width:100%;max-width:500px;margin:0 auto;padding:40px 20px 52px}
   border-radius:2px;padding:13px 15px;font-size:.77rem;line-height:1.85}
 footer{color:var(--foot);font-size:.7rem;line-height:1.9;margin-top:26px}
 footer a{color:var(--footlink)}
+/*
+ * plain（白磁）強制時だけ、装飾レイヤー（影・角丸・角印の二重縁取り）を無効化する
+ * （stage2検品5原則の「角丸・グラデ・影・二重縁取り禁止」対応）。
+ * 配色そのもの（vars由来の色）は一切変えない。白磁以外のパレット出力は不変。
+ * .ura の背景(--paper)がplainではページ地色(--ground)と同値になるため、
+ * 影の代わりに1pxの無彩色border(--rule)だけ残して区画の可読性を保つ。
+ */
+body[data-配色="白磁"] .meishi,
+body[data-配色="白磁"] .ura,
+body[data-配色="白磁"] .print{border-radius:0;box-shadow:none;border:1px solid var(--rule)}
+body[data-配色="白磁"] .seal{border-radius:0;transform:none}
 `;
 
 function frontInfoLine(ctx: SkeletonContext): string {
