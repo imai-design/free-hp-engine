@@ -1,6 +1,6 @@
 # free-hp-engine（AIホームページ製作所（RYOSEIWORLD）・エンジン）
 
-**English summary:** free-hp-engine is a Cloudflare Worker that generates a one-page website for a small business from just three inputs (store name, industry, one-line description) in about 10 seconds. It runs on Cloudflare Workers + Workers AI (free tier, no API key required by default), keeping generation cost near zero. It is licensed under AGPL-3.0. This is a Japanese-first project, but contributions (new design skeletons, industries, translations, etc.) are welcome — see the Japanese README below and [CONTRIBUTING.md](./CONTRIBUTING.md) for details.
+**English summary:** free-hp-engine is a Cloudflare Worker that generates a one-page website for a small business from just three inputs (store name, industry, one-line description) in about 10 seconds. It runs on Cloudflare Workers + Workers AI (free tier, no API key required by default), keeping generation cost near zero. It is licensed under AGPL-3.0. This is a Japanese-first project, but contributions (new design skeletons, industries, translations, etc.) are welcome — see the Japanese README below and [CONTRIBUTING.md](./CONTRIBUTING.md) for details. Contributors are paid — see BOUNTY.md.
 
 3つの入力（店名・業種・ひとこと紹介）から、約10秒でホームページを1枚生成する Cloudflare Worker です。
 [freehp.jp](https://freehp.jp) で本番稼働しています。生成されたページは `https://free-hp-engine.ryoseiworld.workers.dev/s/<slug>` のようなURLでそのまま公開されます。
@@ -12,6 +12,10 @@
 RYOSEIWORLD のミッションは「ITを全て無料にする」ことです。ホームページはその第一弾です。
 
 サーバー費・生成費が実質0円（Cloudflareの無料枠だけ）で回る設計にしてあるので、このリポジトリをフォークして自分のCloudflareアカウントにデプロイすれば、誰でも自分の町のために「無料ホームページ屋さん」を始められます。売上を取る必要がないので、無料のまま人に配れます。
+
+## 貢献した人にはお金を渡します
+
+バグ報告・セキュリティ報告・マージされたPRに、現金で報奨金を支払います。金額は1,000円〜30,000円です。詳しくは [BOUNTY.md](./BOUNTY.md) を見てください。
 
 ## 特徴
 
